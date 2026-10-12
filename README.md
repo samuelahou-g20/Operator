@@ -1,104 +1,104 @@
-# Operator — Trading System
+# Operator
 
-A quantitative trading system. **[ARCHITECTURE.md](ARCHITECTURE.md) is the design source of
-truth** for structure, module responsibilities, and interfaces — read it before changing
-anything. Agent operating rules live in [CLAUDE.md](CLAUDE.md) and `.claude/rules/`.
+Tooling for G-20's market-making desks (MM3, MM2, MM4, treasury, options, OTC). At its center is
+**The Operator**, a Telegram agent: a trader types `/operator <plain language>` in a desk chat and
+it runs the desk's standard lookups, or prepares an order that a human must confirm. Around it sit
+the **desk bots** (one Telegram command each), the **ZP quoting review**, and a few **scheduled
+jobs**. A data lake and a research track support all of this; they are not the product.
 
-**New to this repo?** Start with [ONBOARDING.md](ONBOARDING.md) — setup, credential handoff, and
-what's safe to change.
+**New here?** Read [ONBOARDING.md](ONBOARDING.md) first: setup, credential handoff, and what is safe
+to change. Agent rules live in [CLAUDE.md](CLAUDE.md) and `.claude/rules/`.
 
-## What's implemented
+## What runs
 
-- **Data layer** — fetch → normalize → query, OOM-safe and chunked:
-  - **Binance** USD-M perps: historical backfill (data.binance.vision dumps + REST) and
-    live streaming (trades, L1) over Redis.
-  - **CME** futures via Databento: historical, live, and **continuous stitching** (roll
-    + back-adjustment into es1/es2 strips).
-- **Execution layer**:
-  - Thin adapters for **Binance** (USD-M) and **Hyperliquid** (perps).
-  - **OMS** (`src/oms/`): orders/fills/positions in SQLite, avg-cost PnL, reconciliation,
-    and **live fill ingestion** from the Binance user-data stream.
+| Piece | What it does | Reference |
+|---|---|---|
+| **The Operator** (`src/the_operator/`) | Plain-language desk agent. Read tools run directly; every money or write tool needs a human confirm. Also speaks first when quoting books stop or market share leaves its band. | [docs/operator.md](docs/operator.md) |
+| **Desk bots** (`scripts/*_bot.py`) | `/agg`, `/orders`, `/hedge`, `/trade`, `/jason`, `/ls`, `/vol`, `/macro`, `/sentiment`, `/twap`, `/botstatus`, plus push alerts and the MM2 fill logger. `trade_bot` is the only one that moves money, behind its allowlist and caps. | [docs/bots.md](docs/bots.md) |
+| **ZP quoting review** (`src/the_operator/zp/`) | Per-token quoting report: markouts, captures, widths, compliance, P&L. | [docs/zp_spec.md](docs/zp_spec.md) |
+| **Scheduled jobs** | `pluto-prc` refreshes the Pluto risk tabs in the MM2 sheet; `icp-snapshot` stamps the ICP book's state at the daily cutoff. | module docstrings |
+
+Everything runs as `systemd --user` units on the desk host: `operator.service`, one
+`desk-bot@<name>.service` per bot, and the two timers.
+
+## Run it
+
+Use the Makefile, from the repo root (`make help` lists everything):
+
+```bash
+make status              # one line per unit: what is up, what is not
+make operator            # restart the Operator (the usual one after a change)
+make restart-trade       # restart one bot; also start-, stop-, logs-<name>
+make list                # the bot names those targets accept
+make restart             # restart everything, e.g. after pulling new code
+make check               # lint + tests: run before restarting anything
+make install-units       # first time on a host: install deploy/systemd/* for this checkout
+```
+
+The two timer units are not in `deploy/systemd/` yet, so `install-units` does not recreate them.
 
 ## Setup
 
-`uv`-only, run from the repo root (see ARCHITECTURE §14):
+`uv` only, run from the repo root:
 
 ```bash
-uv sync                # create/refresh the venv from uv.lock
-uv run pytest          # run the test suite
-uv run ruff check .    # lint
+uv sync                  # create the env from uv.lock
+cp .env.example .env     # then fill in real values
+uv run pytest            # confirm the suite passes
 ```
 
-`src` is a package (`from src.data.query import get`); run entry points as modules:
-`uv run python -m scripts.<name>`.
+**Credentials** go in the git-ignored `.env`. [.env.example](.env.example) is the complete list of
+every variable this repo reads, with where to get each one. `docs/bots.md` maps which bot reads
+which variable.
 
-**Credentials** go in a git-ignored `.env` at the repo root (only the env-var *names*
-appear in `config/`). **[.env.example](.env.example) is the complete, sourced list** of every
-credential this repo reads — copy it (`cp .env.example .env`) and fill in real values.
+Run entry points as modules (`uv run python -m scripts.<name>`): `src` is imported as a package.
 
-**Live streaming needs Redis** (`localhost:6379`): `docker run -d --name operator-redis -p 6379:6379 redis:7-alpine`.
+### Data lake
 
-### Data lake location
-
-The lake lives **outside the repo**: `data/` is a symlink to a shared canonical lake (this
-machine: `/home/sam.ahou/projects/operator-data`, ~GBs), so the repo stays small and every
-worktree shares one copy. Code always writes to `data/…` via `src/common/paths.py`
-(`DATA_DIR = REPO_ROOT / "data"`) — the symlink does the redirect, so backfills and fetches
-"just work" with no extra flags. **Run them from the repo root** (`uv run python -m
-scripts.backfill …`). Don't run two backfills on the same `(source, data_type)` at once —
-they write the same physical files.
-
-- **This worktree is already wired** — nothing to do.
-- **New worktrees** are wired automatically by the `.git/hooks/post-checkout` hook on
-  `git worktree add` (idempotent; it refuses to touch a `data/` that holds real files).
-- **A fresh `git clone`** has neither the symlink nor the hook (both live under `.git/`, so
-  they aren't cloned). Wire it manually before any fetch/backfill:
-  ```bash
-  git update-index --skip-worktree data/raw/.gitkeep data/processed/.gitkeep data/state/.gitkeep
-  rm -r data                                   # remove the tracked empty scaffold
-  echo '/data' >> .git/info/exclude            # ignore the symlink locally
-  ln -s /path/to/operator-data data               # point data/ at the shared lake
-  ```
-
-## Common tasks
+`data/` is a symlink to a shared lake outside the repo (this machine:
+`/home/sam.ahou/projects/operator-data`), so every worktree shares one copy. New worktrees are
+wired by the `.git/hooks/post-checkout` hook. A fresh `git clone` has neither the symlink nor the
+hook, so wire it by hand before any fetch:
 
 ```bash
-# Historical data -> raw -> processed
-uv run python -m scripts.backfill  --source binance --symbols btcusdt
-uv run python -m scripts.normalize --source binance --symbols btcusdt
-uv run python -m scripts.resample  --source binance --symbols btcusdt --src 1m --dst 5m
-uv run python -m scripts.daily_fetch --source binance              # yesterday + quality checks
-
-# CME futures (Databento) + continuous strips
-uv run python -m scripts.backfill --source cme --symbols es
-uv run python -m scripts.normalize --source cme --symbols es
-uv run python -m scripts.stitch   --source cme --symbols es
-
-# Live (needs Redis)
-uv run python -m scripts.start_streamer --source binance                      # market data
-uv run python -m scripts.start_streamer --source binance --component aggregator   # derived bars
-uv run python -m scripts.start_streamer --source binance --component user --testnet  # fills -> OMS
+git update-index --skip-worktree data/raw/.gitkeep data/processed/.gitkeep data/state/.gitkeep
+rm -r data                                   # remove the tracked empty scaffold
+echo '/data' >> .git/info/exclude            # ignore the symlink locally
+ln -s /path/to/operator-data data            # point data/ at the shared lake
 ```
 
-## Reading data & placing orders (from code)
+Live streaming needs Redis on `localhost:6379`:
+`docker run -d --name operator-redis -p 6379:6379 redis:7-alpine`.
 
-```python
-from src.data import query
-query.get("perps", "binance", "btcusdt", "bars", timeframe="1m")  # ts-indexed DataFrame
-query.get_continuous("cme", "es", strip=1, timeframe="1d")        # continuous futures strip
-query.available()                                                  # what's in the lake
+## Supporting pieces
 
-from src.oms.oms import OMS
-oms = OMS()
-oms.submit("binance", "my_strategy", "btcusdt", "buy", 0.01, "limit", price=59000)
-oms.reconcile("binance")                                           # local books vs venue
+- **Data lake** (`src/data/`): fetch → normalize → query for Binance, Bybit, OKX, Hyperliquid,
+  MEXC, CME and FRED. Every read goes through `src/data/query.py`; `scripts/daily_task.sh` runs
+  the daily fetch.
+- **Signals** (`src/signals/`): JASON levels, the JWAP gate, trend and mean-reversion scores that
+  the bots and the Operator use.
+- **Research** (`research/`): one folder per experiment, each with a builder that writes its
+  notebook. The funding-carry track lives in `src/strategies/funding_carry/` and
+  [research/funding_carry/README.md](research/funding_carry/README.md).
+- **OMS** (`src/oms/`): order/fill/position records and reconciliation for the venue adapters.
+- **Live monitor** (`uv run python -m scripts.dashboard`): a terminal view of live prices and
+  features for the symbols in `config/dashboard.yaml`.
+
+[ARCHITECTURE.md](ARCHITECTURE.md) has the design rules for the data and research layers.
+
+## Layout
+
 ```
-
-All lake reads go through `src/data/query.py`; all live orders go through the OMS — never
-the adapters directly (ARCHITECTURE §3, §10).
-
-## Repository layout
-
-`src/common/` (paths, logging, config, universe) · `src/data/` (fetching, streaming, etl,
-schemas, query, lake_io) · `src/adapters/` · `src/oms/` · `config/` (universe, data) ·
-`scripts/` (thin CLIs) · `tests/` (mirrors `src/`). Data lake under `data/` (git-ignored).
+src/the_operator/   the Operator agent, its tools, policy gate and the ZP review
+scripts/            desk bots (*_bot.py), scheduled jobs and thin CLIs
+src/adapters/       thin API clients: CoinRoutes, trade service, refsvc, Binance, Hyperliquid, Derive
+src/signals/        JASON, JWAP and other signals
+src/data/           data lake: fetching, streaming, ETL, query
+src/oms/            order management
+src/strategies/     funding carry backtests
+config/             desks, Operator playbooks, universe and data configs, strategy configs
+deploy/systemd/     unit files for the Operator and the bots
+docs/               bots, Operator, ZP and JWAP references; vendor docs in docs/references/
+research/           experiments and their notebooks
+tests/              mirrors src/; bot and script tests sit at the top level
+```
