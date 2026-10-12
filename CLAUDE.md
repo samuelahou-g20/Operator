@@ -4,9 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repository is
 
-A **quantitative trading system**, implemented and running: a multi-venue crypto data lake, a
-funding-rate carry strategy shipped through eight validated versions (v8.0 is the product), a
-reproducible research track behind every claim, and CME futures groundwork. **`ARCHITECTURE.md`
+**Tooling for G-20's market-making desks.** The product is the desk layer: **The Operator**
+(`src/the_operator/`, a Telegram agent traders ask in plain language; money and write tools need a
+human confirm), the **desk bots** (`scripts/*_bot.py`), the **ZP quoting review**, and the
+`pluto-prc` / `icp-snapshot` jobs, all running as `systemd --user` units on the desk host. The
+multi-venue data lake, signals, OMS and research track (funding carry, JASON) are the
+**supporting layer**: they exist to feed and justify the desk tools. **`ARCHITECTURE.md`
 is the design source of truth** (read the relevant section before implementing); this file plus
 the code are the operational truth. If a task seems to require new top-level structure, a new `src/`
 module family, a new dependency, or an alternative to a single-algorithm rule below, **stop and
@@ -14,12 +17,16 @@ ask the owner** — do not invent structure or generalize.
 
 ## State of the system (orientation, not authority — verify against code)
 
+- **Desk layer (live)**: `operator.service` plus one `desk-bot@<name>.service` per bot, installed
+  from `deploy/systemd/` and driven through the `Makefile`. A code change to a bot or the Operator
+  is not live until its unit is restarted (`make operator`, `make restart-<bot>`); run
+  `make check` first. `docs/operator.md` and `docs/bots.md` are the references.
 - **Data lake**: Binance (468 spot+perp pairs incl. delisted, 2021+), Bybit (343, ~mid-2021+),
   OKX (forward-accumulating; REST funding retention ~93 days), Hyperliquid (hourly funding 2023+,
   1h bars are a rolling ~5000-bar window — must be accumulated), FRED rates (`fred/tb3ms`, needs
   `FRED_API_KEY` in env/`.env`). `scripts/daily_task.sh` runs the daily fetch+normalize for all
   sources.
-- **Funding carry**: `config/strategies/funding_carry/v8.yaml` is the shipped product
+- **Funding carry** (research track): `config/strategies/funding_carry/v8.yaml` is the shipped version
   (multi-venue breadth + drawdown overlay + portfolio-margin accounting + idle-cash yield);
   `v8.1.yaml` is the full-book capacity configuration. Entry point:
   `python -m src.strategies.funding_carry.v8.backtest` (runs + renders the HTML report).
@@ -95,6 +102,15 @@ Scripts run in **module mode** (`python -m scripts.x`), not script mode — scri
   configs key columns `venue:pair`.
 - **Streaming:** Redis channels `live:{source}:{symbol}:{data_type}`; only
   streamer/aggregator/consumer touch Redis directly.
+
+## The Operator (`src/the_operator/`)
+
+**`docs/operator.md` is the reference** — read it before changing the Operator. Key rules: the
+model only proposes tool calls and never holds a credential; `policy.py` is a pure gate returning
+a mode per call (`execute` / `confirm` / `dry_run` / `denied`), and the phase lives in its tables;
+money tools build through `trade_bot.prepare_order` / `prepare_scalper` and never place an order
+themselves (a test enforces that only `execution.py` touches `CoinRoutesTrader`); every verdict is
+journaled under `logs/operator/`. Per-desk playbooks are `config/operator/{desk}.md`.
 
 ## Telegram bots (`scripts/*_bot.py`)
 

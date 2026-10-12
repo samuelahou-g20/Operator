@@ -151,5 +151,5 @@ evidence that it is unreachable. Nothing here yet.
 | `docs/operator.md` | **DONE — operator agent** | 185 → 272 lines. The request-flow and money-rail sections were still accurate, so this was a patch plus four new sections: **Who may use it** (the two chat gates + the new user gate), **What it says unprompted** (both watches, hysteresis, the hourly throttle, baseline suppression), **What survives a restart** (state.py, desk notes, the 8h conversation window), **The quoting boxes** (the four rapid-engine routes and why only `execution.py` may write). Tool table and rollout updated. |
 | `docs/bots.md` | bots agent | **Current — I own it.** Updated with every bot change through 22 Sep (flow-alert format, `quote=`, the one-sided ladder band, `/trade today` MtM). No rewrite needed. |
 | `docs/zp_spec.md` | — | Current, updated 1 Oct |
-| `ARCHITECTURE.md` | PROPOSED | Does it still describe the repo now that the Operator is a large part of it? |
-| `README.md` | PROPOSED | References `projects/mm3`; update with §4 |
+| `ARCHITECTURE.md` | DONE | Reframed around the desk layer (intro + §15), stale facts fixed (12 Oct). |
+| `README.md` | DONE | Rewritten around the desk tooling (12 Oct). |

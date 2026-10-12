@@ -5,6 +5,14 @@ module, and the interfaces between them — and, more importantly, the *rational
 them (why a single read path, why no shared engine, why chunked writes). Code shows *what*;
 this document exists for the *why* that code can't express.
 
+**What the repo is for.** Tooling for G-20's market-making desks. The product is the **desk
+layer**: The Operator (`src/the_operator/`, a Telegram agent the desks ask in plain language), the
+desk bots (`scripts/*_bot.py`), the ZP quoting review and a few scheduled jobs, all run as
+`systemd --user` units. The data lake, signals, OMS and research described in §2–§13 are the
+**supporting layer** underneath. The desk layer's own design lives in `docs/operator.md` and
+`docs/bots.md`; its load-bearing rules are summarized in §15. Everything in §0 applies to both
+layers.
+
 Deviating from this design (new top-level dir, new `src/` module, new dependency, an
 alternative roll rule, an ABC, async) needs the owner's approval — ask first. Day-to-day
 agent operating rules live in `CLAUDE.md` and `.claude/rules/`, not here.
@@ -43,15 +51,23 @@ repo/
 ├── results/                  # backtest outputs, reports, figures
 │
 ├── config/
+│   ├── desks.yaml            # desk roster: tokens, hedge strategy, bots per desk
+│   ├── operator/             # per-desk Operator playbooks (appended to its system prompt)
+│   ├── zp/                   # ZP review token and strategy-box configs
 │   ├── strategies/           # one yaml per strategy
 │   ├── universe/             # one yaml per source: instruments + characteristics
 │   └── data/                 # fetcher/streamer/backfill configs
 │
-├── scripts/                  # entry points (run backfill, start streamer, run strat live, ...)
+├── scripts/                  # desk bots (*_bot.py), scheduled jobs, thin CLIs
+├── deploy/systemd/           # unit files for the Operator and the bots (make install-units)
+├── docs/                     # Operator, bots, ZP and JWAP references; vendor docs in references/
 ├── research/                 # notebooks & scratch work, NOT importable by src/
-├── tests/                    # mirrors src/ layout
+├── tests/                    # mirrors src/ layout; bot and script tests at the top level
 │
 └── src/
+    ├── the_operator/         # the Operator: gateway, agent, policy gate, tools, ZP review
+    ├── signals/              # JASON, JWAP, trend and mean-reversion signals (pure)
+    ├── monitor/              # live terminal monitor (scripts.dashboard)
     ├── common/               # paths, logging, config loading, universe loading
     ├── data/
     │   ├── fetching/{source}/    # backfill.py + fetcher.py per source
@@ -311,7 +327,7 @@ Failures are logged as warnings to `logs/quality/` — they never block the writ
 
 ## 13. `scripts/`, `tests/`, `research/`, `reporting/`, `logs/`, `results/`
 
-- **`scripts/`** — thin CLI entry points only (argparse, call into `src`, exit): `backfill.py --source cme --symbols es,ng`, `daily_fetch.py`, `start_streamer.py --source binance`, `run_live.py --strategy xyz`, `stitch.py`. No logic in scripts.
+- **`scripts/`** — thin CLI entry points (argparse, call into `src`, exit): `backfill.py --source cme --symbols es,ng`, `daily_fetch.py`, `start_streamer.py --source binance`, `stitch.py`. The exception is the desk bots: each `*_bot.py` is a self-contained long-poller that owns its fetch and render (§15, `docs/bots.md`).
 - **`tests/`** — pytest, mirrors `src/` layout (`tests/data/test_query.py`, ...). Priority order for coverage: schemas/validate, stitch roll logic, query, OMS bookkeeping. No CI for now; run locally with `pytest`.
 - **`research/`** — notebooks and scratch. May import `src`; `src` must **never** import from `research/`.
 - **`reporting/`** — functions that turn backtest outputs (`results/{strategy}/`) and OMS state into reports (HTML/markdown + figures into `results/reports/`). Built when the first strategy produces results, not before.
@@ -324,7 +340,26 @@ Failures are logged as warnings to `logs/quality/` — they never block the writ
 
 - **uv only.** A minimal `pyproject.toml` at repo root (name, `requires-python`, dependency list — nothing more) plus the committed `uv.lock` define the environment. No conda, no poetry, no pip-tools, no build backend, no `[project.scripts]` or other packaging ceremony.
 - **Reproducibility**: `uv sync` recreates the exact environment (hash-pinned transitive graph from `uv.lock`) on any machine — research box and servers resolve identically. Commit `uv.lock`; never edit it by hand. Add deps with `uv add <pkg>`, not by hand-editing `pyproject.toml`.
-- **Execution convention**: run everything from repo root via `uv run <script>` (e.g. `uv run python scripts/backfill.py --source cme`). `src` is imported as a package (`from src.data.query import get`). No separate install step, no manual `PYTHONPATH`.
-- Long-running processes (streamers, live strategies) are started via `scripts/` (wrapped in `uv run`) — process supervision (systemd/tmux/cron) is an ops detail outside this document for now. An
-  opt-in systemd user-unit template for the Telegram bot family now exists at `deploy/systemd/`
-  (see `docs/bots.md` § Supervision); nothing installs or enables it automatically.
+- **Execution convention**: run everything from repo root in module mode (e.g. `uv run python -m scripts.backfill --source cme`); script mode breaks `import src`. `src` is imported as a package (`from src.data.query import get`). No separate install step, no manual `PYTHONPATH`.
+- **Supervision**: the Operator and the desk bots run as `systemd --user` units from
+  `deploy/systemd/` (`operator.service`, `desk-bot@<name>.service`), installed with `make
+  install-units` and driven through the `Makefile` (`make status`, `make operator`, `make
+  restart-<bot>`). The `pluto-prc` and `icp-snapshot` timers run the same way but their unit files
+  are not in `deploy/systemd/` yet.
+
+---
+
+## 15. The desk layer (summary; details in `docs/operator.md`, `docs/bots.md`)
+
+- **The Operator never holds a credential or executes anything itself.** The model only proposes
+  tool calls; `src/the_operator/policy.py` is a pure gate that returns a mode per call
+  (`execute`, `confirm`, `dry_run`, `denied`), and every verdict and result is journaled under
+  `logs/operator/`.
+- **Money moves only through `trade_bot`'s rails.** Operator money tools build orders through
+  `trade_bot.prepare_order` / `prepare_scalper`, the same path a typed `/trade` takes, and need a
+  human confirm. `trade_bot` is the only money-moving bot and stays behind its allowlist and caps.
+- **One long-poller per BotFather token.** A second poller on the same token gets Telegram 409;
+  never start a bot by hand while its unit runs.
+- **Chat-aware desks.** Bots route by chat id (`TELEGRAM_CHAT_ID`, `TELEGRAM_MM2_CHAT_ID`, ...);
+  desk facts (tokens, hedge strategy, bot roster) come from `config/desks.yaml`.
+- **Order-book and price data come from CoinRoutes** (`cost_calculator`), not from Binance.
