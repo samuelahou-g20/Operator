@@ -22,7 +22,7 @@ agent operating rules live in `CLAUDE.md` and `.claude/rules/`, not here.
 ## 0. Principles (read first, these override everything)
 
 1. **Simplicity first.** Implement the minimal version that works. No abstract base class hierarchies, no plugin registries, no dependency injection frameworks, no premature generalization. If a function does the job, do not write a class. We iterate later if needed.
-2. **Strategy autonomy.** Each strategy owns its backtest and its live runtime. There is NO shared backtest engine and NO shared live orchestrator. Strategies consume shared infrastructure (query, streaming, adapters, OMS) but their logic is self-contained.
+2. **No strategies here.** This repo serves the desks; strategy backtests and live runtimes are out of scope (§11).
 3. **Single read path.** Any code that reads from the data lake goes through `src/data/query`. No module opens parquet/csv files from `data/` directly. (The only exceptions: the fetchers/ETL that *write* the data, and `query` itself.)
 4. **Raw is immutable.** `data/raw/` is append-only, written only by `src/data/fetching/`. Nothing else ever writes or modifies files there. All transformations write to `data/processed/`.
 5. **Flat files only.** Parquet (partitioned) for large data, CSV for small data. No database for market data. The only durable non-flat-file store is the OMS state (SQLite, see §10).
@@ -48,13 +48,12 @@ repo/
 │   └── state/                # OMS durable state (sqlite), live strategy state
 │
 ├── logs/                     # runtime logs, one subfolder per process/strategy
-├── results/                  # backtest outputs, reports, figures
+├── results/                  # generated reports and figures
 │
 ├── config/
 │   ├── desks.yaml            # desk roster: tokens, hedge strategy, bots per desk
 │   ├── operator/             # per-desk Operator playbooks (appended to its system prompt)
 │   ├── zp/                   # ZP review token and strategy-box configs
-│   ├── strategies/           # one yaml per strategy
 │   ├── universe/             # one yaml per source: instruments + characteristics
 │   └── data/                 # fetcher/streamer/backfill configs
 │
@@ -77,10 +76,7 @@ repo/
     │   └── query.py              # the single read API
     ├── adapters/{source}/        # live exchange APIs (orders, positions, balances)
     ├── oms/                      # orders/positions/trades tracking + reconciliation
-    ├── strategies/
-    │   ├── {strategy_name}/      # signals, backtest, live runtime — self-contained
-    │   └── utils/                # capital allocation, signal→position mapping, etc.
-    └── reporting/                # report generation from backtests & live results
+    └── reporting/                # metrics, figures and the G-20 report template
 ```
 
 ---
@@ -153,7 +149,6 @@ data/{stage}/{asset_type}/{source}/{symbol}/{data_type}/...
     settlement: cash        # cash | physical — drives roll urgency & delivery risk
   ```
   Exact field set is finalized when implementing `src/common/universe`; keep it minimal, extend when a real consumer needs a field. Note `data_types` is **not** a universe field — what data exists is discovered from the lake via `query.available()` (§8) and what to fetch is declared in `config/data/{source}.yaml`.
-- **`config/strategies/{name}.yaml`** — everything a strategy needs to run (universe subset, parameters, capital, risk limits, mode flags). The strategy's own README documents its config schema.
 - **`config/data/{source}.yaml`** — fetcher/streamer settings: endpoints, rate limits, data_types to fetch, big-vs-small storage decision, backfill date ranges.
 - **Credentials are NOT in config files.** They live in environment variables; config references the env var name only.
 
@@ -291,25 +286,10 @@ Tracks and reconciles everything execution-related, on top of adapters.
 
 ---
 
-## 11. `src/strategies/`
+## 11. Strategies (out of scope)
 
-### 11.1 Per-strategy folder (the only mandated structure)
-
-```
-strategies/{name}/
-├── README.md        # what it trades, the idea, config schema
-├── signals.py       # pure signal computation: data in -> signals/targets out
-├── backtest.py      # this strategy's own backtest, reads via query, writes to results/{name}/
-├── live.py          # this strategy's own live loop: consumer -> signals -> OMS
-└── (anything else the strategy needs)
-```
-
-- `signals.py` must be **pure** (no I/O): both `backtest.py` and `live.py` import it. This is the one architectural rule for strategies — it keeps backtest/live logic identical where it matters.
-- Each strategy defines its own backtest and its own live runtime. Shared code goes to `strategies/utils/` only when ≥2 strategies actually need it — never preemptively.
-
-### 11.2 `strategies/utils/`
-
-Plain functions: capital allocation, risk parity weights, signal→position mapping, common performance stats. Grown bottom-up from real duplication.
+Strategy code and its research were removed: this repo serves the desks. Adding
+`src/strategies/` back needs the owner's approval (§0.7).
 
 ---
 
@@ -329,10 +309,10 @@ Failures are logged as warnings to `logs/quality/` — they never block the writ
 
 - **`scripts/`** — thin CLI entry points (argparse, call into `src`, exit): `backfill.py --source cme --symbols es,ng`, `daily_fetch.py`, `start_streamer.py --source binance`, `stitch.py`. The exception is the desk bots: each `*_bot.py` is a self-contained long-poller that owns its fetch and render (§15, `docs/bots.md`).
 - **`tests/`** — pytest, mirrors `src/` layout (`tests/data/test_query.py`, ...). Priority order for coverage: schemas/validate, stitch roll logic, query, OMS bookkeeping. No CI for now; run locally with `pytest`.
-- **`research/`** — notebooks and scratch. May import `src`; `src` must **never** import from `research/`.
-- **`reporting/`** — functions that turn backtest outputs (`results/{strategy}/`) and OMS state into reports (HTML/markdown + figures into `results/reports/`). Built when the first strategy produces results, not before.
-- **`logs/`** — `logs/{process_or_strategy}/...` rotating files via `common.logging`.
-- **`results/`** — `results/{strategy}/{run_id}/` for backtests; `results/reports/` for generated reports.
+- **`research/`** — analysis notebooks (today: JASON pivots). May import `src`; `src` must **never** import from `research/`.
+- **`reporting/`** — generic metrics, figures, HTML layout, and the G-20 docx template fill used by the sentiment report.
+- **`logs/`** — `logs/{process}/...` rotating files via `common.logging`.
+- **`results/`** — generated reports (e.g. `results/mm3_perf/`).
 
 ---
 

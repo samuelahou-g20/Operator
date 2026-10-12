@@ -3,7 +3,7 @@
 # Credentials: only the env-var NAME is referenced (never the key itself). The key is free:
 # https://fred.stlouisfed.org/docs/api/api_key.html
 #
-# tb3ms = 3-month T-bill (monthly, percent p.a.) — the funding-carry risk-free rate used by
+# tb3ms = 3-month T-bill (monthly, percent p.a.) — the risk-free rate used by
 # the v8 cash-yield credit and the excess-Sharpe reporting (engine `cash.rf_series`).
 
 vendor: fred

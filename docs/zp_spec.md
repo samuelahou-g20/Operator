@@ -2,8 +2,8 @@
 
 Extracted 2026-09-10 from the MM2 desk's `mmanalytics` repo (Streamlit dashboard + report Telegram
 bot) so The Operator can produce the report on request. Frozen source copies live in
-`research/zp_reference/mmanalytics_extract/` (reference only, not importable); the example output
-is `research/zp_reference/NEAR_ZP_9h_quoting_review.pdf`.
+`docs/references/zp_source/mmanalytics_extract/` (reference only, not importable); the example output
+is `docs/references/zp_source/NEAR_ZP_9h_quoting_review.pdf`.
 
 ## 1. What a ZP is
 
@@ -40,7 +40,7 @@ adds; the numbers stay deterministic.
 | **Orderbook snapshots** (widths, 2% depth compliance, uptime) | **Postgres `OrderbookAnalysis`** on RDS (`ZP_OB_DB_URL`, psycopg): `exch_order_books(id, ccypair, exchange, product_area, timestamp_micros)` ⟕ `exch_order_book_entries(order_book_id, price, size, type∈{BID,ASK})`, filtered by `ccypair IN (pairs)`, `product_area`, window. ~87M snapshots, programs `mm1..mm5`, `perp`, `algodesk` | ✅ connected 2026-09-10 (the MM2 repo's secrets said MSSQL; it is Postgres, so no new dependency) |
 | Dynamic-mode settings & vol history | gamma-dash `GET /api/price-bias?token=T` and `/api/price-bias/history?token&base&exchange&hours` (`http://127.0.0.1:8618` then `https://gamma-dash.ext.g20api.com`; VPN, no auth) | ❌ reachable from this host (HTTP 302), needs a client |
 | Tick sizes | ccxt `load_markets` precision → tick, `tick_bps = tick/mid·1e4`, `min_ticks = base_min_spread_bps / tick_bps` | ✅ ccxt |
-| Token → venues × quote pairs, `md_pair`, `md_exchange`, CoinRoutes client code | `config.yaml` (110 tokens, both desks) — copied to `research/zp_reference/mmanalytics_extract/config.yaml` | ⚠ decide: import as `config/zp/tokens.yaml` or derive venues from CoinRoutes strategies |
+| Token → venues × quote pairs, `md_pair`, `md_exchange`, CoinRoutes client code | `config.yaml` (110 tokens, both desks) — copied to `docs/references/zp_source/mmanalytics_extract/config.yaml` | ⚠ decide: import as `config/zp/tokens.yaml` or derive venues from CoinRoutes strategies |
 
 ## 3. Formulas (exact)
 

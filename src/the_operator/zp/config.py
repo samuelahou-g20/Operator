@@ -1,7 +1,7 @@
 """Token configuration for the ZP quoting review.
 
 Loads ``config/zp/tokens.yaml`` and shapes one token's entry the way the frozen reference
-(``research/zp_reference/mmanalytics_extract/trade_analysis_core.py``) shaped its ``config.yaml``:
+(``docs/references/zp_source/mmanalytics_extract/trade_analysis_core.py``) shaped its ``config.yaml``:
 ``exchanges`` expanded from ``{pair: [EXCHANGE, ...]}`` to a flat ``[{pair, exchange}, ...]``, plus
 ``g20_name``/``deployment_names`` defaults.
 

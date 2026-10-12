@@ -1,5 +1,5 @@
 """Pure ZP compute formulas — ported from the frozen reference
-``research/zp_reference/mmanalytics_extract/trade_analysis_core.py`` per ``docs/zp_spec.md`` §3.
+``docs/references/zp_source/mmanalytics_extract/trade_analysis_core.py`` per ``docs/zp_spec.md`` §3.
 
 Every function here operates on DataFrames/dicts already in hand (no I/O, no adapters, no ccxt,
 no network) so it can be hand-checked and unit-tested without mocking anything. ``run.py`` wires

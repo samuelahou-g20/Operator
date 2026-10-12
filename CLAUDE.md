@@ -8,8 +8,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 (`src/the_operator/`, a Telegram agent traders ask in plain language; money and write tools need a
 human confirm), the **desk bots** (`scripts/*_bot.py`), the **ZP quoting review**, and the
 `pluto-prc` / `icp-snapshot` jobs, all running as `systemd --user` units on the desk host. The
-multi-venue data lake, signals, OMS and research track (funding carry, JASON) are the
-**supporting layer**: they exist to feed and justify the desk tools. **`ARCHITECTURE.md`
+multi-venue data lake, signals, OMS and JASON research are the **supporting layer**: they exist
+to feed and justify the desk tools. Strategy code is out of scope here. **`ARCHITECTURE.md`
 is the design source of truth** (read the relevant section before implementing); this file plus
 the code are the operational truth. If a task seems to require new top-level structure, a new `src/`
 module family, a new dependency, or an alternative to a single-algorithm rule below, **stop and
@@ -26,15 +26,8 @@ ask the owner** — do not invent structure or generalize.
   1h bars are a rolling ~5000-bar window — must be accumulated), FRED rates (`fred/tb3ms`, needs
   `FRED_API_KEY` in env/`.env`). `scripts/daily_task.sh` runs the daily fetch+normalize for all
   sources.
-- **Funding carry** (research track): `config/strategies/funding_carry/v8.yaml` is the shipped version
-  (multi-venue breadth + drawdown overlay + portfolio-margin accounting + idle-cash yield);
-  `v8.1.yaml` is the full-book capacity configuration. Entry point:
-  `python -m src.strategies.funding_carry.v8.backtest` (runs + renders the HTML report).
-  `research/funding_carry/README.md` indexes every research arc (8 shipped versions, 8 documented
-  nulls, honesty passes) — read it before touching the strategy.
 - **Sharpe convention (owner directive)**: Sharpe = (E[r] − E[rf]) / vol(r) everywhere; ratios
-  that ignore rf are not Sharpe ratios and are not reported. The engine persists the daily rf
-  series in each run's `returns.parquet`; reports must not read the lake.
+  that ignore rf are not Sharpe ratios and are not reported.
 
 ## Commands
 
@@ -48,8 +41,6 @@ uv run python -m scripts.backfill --source bybit --universe   # sources: binance
 uv run python -m scripts.daily_fetch --source okx
 uv run python -m scripts.normalize --source bybit --universe
 uv run python -m scripts.discover_universe --source binance --write   # regenerate the universe registry
-uv run python -m src.strategies.funding_carry.v8.backtest --config strategies/funding_carry/v8.yaml
-uv run python -m scripts.report --strategy funding_carry --version v8.0
 uv run pytest                                        # all tests (no CI; run locally)
 uv run pytest tests/data/test_query.py::test_name    # single test
 uv run ruff check src tests scripts                  # lint (notebooks and _build_*.py are excluded)
@@ -70,13 +61,9 @@ Scripts run in **module mode** (`python -m scripts.x`), not script mode — scri
   Sanctioned exceptions are documented in-module (e.g. FRED full-series refresh; `--overwrite`
   re-backfills).
 - **The universe registry is the instrument record.** `config/universe/{source}.yaml` holds every
-  instrument any strategy uses (generated via `discover_universe --write`; hand-set fields survive
-  regeneration). Strategies resolve `universe: all` FROM the registry; the lake only gates data
-  availability. Never resolve a universe from the lake alone.
-- **Strategy autonomy.** No shared backtest engine across strategies and no shared live
-  orchestrator; each `strategies/{name}/` owns its lifecycle. Within funding_carry, versions share
-  `engine.py` and supply **pure** `signals.py` (no I/O) — backtest and live must import identical
-  logic. Version modules are thin wrappers; logic lives in engine + signals.
+  instrument the lake fetches (generated via `discover_universe --write`; hand-set fields survive
+  regeneration); the lake only gates data availability. Never resolve a universe from the lake
+  alone.
 - **All live orders go through the OMS**, never directly through adapters. Adapters are thin API
   translation — no business logic, no position math.
 - **Schemas defined once** in `src/data/schemas.py`. Fetchers normalize vendor data on write;
@@ -86,8 +73,6 @@ Scripts run in **module mode** (`python -m scripts.x`), not script mode — scri
 - **One stitching algorithm** for futures (`etl/futures/stitch.py`). No alternative roll rules.
 - **Chunked, idempotent backfills are mandatory.** Process per day/contract/symbol; never
   accumulate unbounded data in memory; re-running a range overwrites cleanly, never duplicates.
-- **Reports read only a completed run's artifacts** — never the lake. Anything a report needs
-  (e.g. the rf series) is persisted into the run dir by the engine.
 
 ## Data lake & config conventions
 
@@ -125,13 +110,10 @@ subagent** (`.claude/agents/bot-dev.md`) for bot work — it starts pre-loaded w
 
 ## Research conventions
 
-`research/{track}/` = one folder per experiment/version (version-prefixed once shipped), each a
-`_build_*.py` that programmatically builds AND executes its `.ipynb` (SVG figures, time-series
-panels; notebooks are outputs — never hand-edit). Shared harness `research/funding_carry/lab.py`
-reproduces the engine to 1e-6 — validate parity before trusting any number. Preregister designs,
-pay real costs, judge in excess of rf, count every trial (the DSR ledger), and document nulls —
-a clean null is a shipped result. `research/` may import `src`; `src` must never import
-`research/`.
+`research/{track}/` = one folder per analysis (today: `jason/`), each a `_build_*.py` that
+programmatically builds AND executes its `.ipynb` (SVG figures, time-series panels; notebooks are
+outputs — never hand-edit). Judge results in excess of rf and document nulls. `research/` may
+import `src`; `src` must never import `research/`.
 
 ## Coding conventions
 

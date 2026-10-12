@@ -1,6 +1,6 @@
 """FRED macro-series backfill via the official API (ARCHITECTURE §6.1).
 
-`run_backfill` pulls each configured series (e.g. TB3MS — 3-month T-bill, the funding-carry
+`run_backfill` pulls each configured series (e.g. TB3MS — 3-month T-bill, the
 risk-free rate) in ONE request per series: the observations endpoint returns a monthly
 series' full history in a single page. Writes raw one-file-per-symbol in the series' native
 units (TB3MS: percent per annum) — unit conversion is normalize's job. Missing observations

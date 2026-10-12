@@ -1,6 +1,6 @@
 """ZP (Zeyi Process) quoting-review compute: the deterministic numbers behind a token's MM
 quoting review (summary P&L, markouts, capture, orderbook widths/compliance, dynamic-mode
-checks), ported from the frozen `research/zp_reference/mmanalytics_extract` source per
+checks), ported from the frozen `docs/references/zp_source/mmanalytics_extract` source per
 `docs/zp_spec.md`.
 
 Package layout: `config.py` (token config), `sources.py` (thin, fail-soft fetchers over our own

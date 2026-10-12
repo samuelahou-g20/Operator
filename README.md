@@ -77,9 +77,8 @@ Live streaming needs Redis on `localhost:6379`:
   the daily fetch.
 - **Signals** (`src/signals/`): JASON levels, the JWAP gate, trend and mean-reversion scores that
   the bots and the Operator use.
-- **Research** (`research/`): one folder per experiment, each with a builder that writes its
-  notebook. The funding-carry track lives in `src/strategies/funding_carry/` and
-  [research/funding_carry/README.md](research/funding_carry/README.md).
+- **Research** (`research/`): JASON pivot analysis, each folder with a builder that writes its
+  notebook.
 - **OMS** (`src/oms/`): order/fill/position records and reconciliation for the venue adapters.
 - **Live monitor** (`uv run python -m scripts.dashboard`): a terminal view of live prices and
   features for the symbols in `config/dashboard.yaml`.
@@ -95,8 +94,7 @@ src/adapters/       thin API clients: CoinRoutes, trade service, refsvc, Binance
 src/signals/        JASON, JWAP and other signals
 src/data/           data lake: fetching, streaming, ETL, query
 src/oms/            order management
-src/strategies/     funding carry backtests
-config/             desks, Operator playbooks, universe and data configs, strategy configs
+config/             desks, Operator playbooks, ZP, universe and data configs
 deploy/systemd/     unit files for the Operator and the bots
 docs/               bots, Operator, ZP and JWAP references; vendor docs in docs/references/
 research/           experiments and their notebooks
