@@ -1,0 +1,26 @@
+[Unit]
+Description=The Operator — Telegram agent (src/the_operator)
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+# EDIT ME before enabling: absolute path to this repo's checkout on this machine.
+WorkingDirectory=/path/to/operator
+
+# User systemd units start with a minimal PATH that excludes ~/.local/bin, where uv lives.
+Environment=PATH=%h/.local/bin:/usr/bin:/bin
+ExecStart=%h/.local/bin/uv run python -m src.the_operator
+
+# on-failure, not always: the single-instance flock and Telegram's 409 on a duplicate poller both
+# exit 0 on purpose (see docs/bots.md); `always` would restart-loop against them.
+Restart=on-failure
+RestartSec=10
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

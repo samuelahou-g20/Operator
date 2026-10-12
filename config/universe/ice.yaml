@@ -1,0 +1,160 @@
+# Instrument universe for ICE futures (ARCHITECTURE §3). Energy + softs + one
+# equity index + the dollar index, spanning ICE Futures Europe and ICE Futures
+# U.S. NOTE: the repo has no ICE fetcher/streamer yet (config/data has only cme +
+# binance) — this file is instrument reference metadata; wiring an ICE data
+# source is separate work.
+#
+# `multiplier` is the point value: tick_value = tick_size * multiplier, in the
+# instrument's *quoted* unit. Softs (kc/sb/ct/oj) quote in CENTS per pound, so
+# their tick_size/multiplier are in cents to keep that identity true. Symbol keys
+# use readable family names; the ICE root code is noted inline.
+#
+# Session templates: each ICE product below runs a distinct schedule.
+
+sessions:
+  ice_eu_energy: "01:00 -> 23:00 Europe/London (Sunday open 23:00)"
+  ice_eu_equity: "01:00 -> 21:00 Europe/London"
+  ice_us_coffee: "04:15 -> 13:30 America/New_York"
+  ice_us_sugar: "03:30 -> 13:00 America/New_York"
+  ice_us_cocoa: "04:45 -> 13:30 America/New_York"
+  ice_us_cotton: "21:00 -> 14:20 (next day) America/New_York (overnight)"
+  ice_us_oj: "08:00 -> 14:00 America/New_York"
+  ice_us_dx: "Sun 18:00 -> Fri 17:00 America/New_York, overnight Mon-Thu 20:00 -> 17:00"
+
+# --- Energy (ICE Futures Europe) ---
+
+brent:                      # ICE root B / BRN
+  asset_type: futures
+  exchange: ice
+  currency: USD
+  tick_size: 0.01           # USD/barrel
+  multiplier: 1000          # 1,000 bbl; tick_value = $10.00
+  rolling_cycle: [F, G, H, J, K, M, N, Q, U, V, X, Z]   # monthly
+  strips: 2
+  sector: energy
+  subsector: crude
+  session: ice_eu_energy
+  settlement: cash
+
+gasoil:                     # ICE root G / ULS (Low Sulphur Gasoil)
+  asset_type: futures
+  exchange: ice
+  currency: USD
+  tick_size: 0.25           # USD/metric tonne
+  multiplier: 100           # 100 metric tonnes; tick_value = $25.00
+  rolling_cycle: [F, G, H, J, K, M, N, Q, U, V, X, Z]   # monthly
+  strips: 2
+  sector: energy
+  subsector: refined
+  session: ice_eu_energy
+  settlement: physical
+
+wti:                        # ICE root T / WBS (ICE WTI, distinct from NYMEX CL)
+  asset_type: futures
+  exchange: ice
+  currency: USD
+  tick_size: 0.01           # USD/barrel
+  multiplier: 1000          # 1,000 bbl; tick_value = $10.00
+  rolling_cycle: [F, G, H, J, K, M, N, Q, U, V, X, Z]   # monthly
+  strips: 2
+  sector: energy
+  subsector: crude
+  session: ice_eu_energy
+  settlement: cash
+
+# --- Softs (ICE Futures U.S.). kc/sb/ct/oj quote in cents/lb; cc in USD/tonne. ---
+
+kc:                         # Coffee C
+  asset_type: futures
+  exchange: ice
+  currency: USD
+  tick_size: 0.05           # cents/lb
+  multiplier: 375           # 37,500 lb -> $3.75/cent; tick_value = $18.75
+  rolling_cycle: [H, K, N, U, Z]
+  strips: 2
+  sector: agriculture
+  subsector: softs
+  session: ice_us_coffee
+  settlement: physical
+
+sb:                         # Sugar No.11
+  asset_type: futures
+  exchange: ice
+  currency: USD
+  tick_size: 0.01           # cents/lb
+  multiplier: 1120          # 112,000 lb -> $11.20/cent; tick_value = $11.20
+  rolling_cycle: [H, K, N, V]
+  strips: 2
+  sector: agriculture
+  subsector: softs
+  session: ice_us_sugar
+  settlement: physical
+
+cc:                         # Cocoa
+  asset_type: futures
+  exchange: ice
+  currency: USD
+  tick_size: 1.0            # USD/metric tonne
+  multiplier: 10            # 10 metric tonnes; tick_value = $10.00
+  rolling_cycle: [H, K, N, U, Z]
+  strips: 2
+  sector: agriculture
+  subsector: softs
+  session: ice_us_cocoa
+  settlement: physical
+
+ct:                         # Cotton No.2
+  asset_type: futures
+  exchange: ice
+  currency: USD
+  tick_size: 0.01           # cents/lb
+  multiplier: 500           # 50,000 lb -> $5.00/cent; tick_value = $5.00
+  rolling_cycle: [H, K, N, V, Z]
+  strips: 2
+  sector: agriculture
+  subsector: softs
+  session: ice_us_cotton
+  settlement: physical
+
+oj:                         # FCOJ-A (frozen concentrated orange juice)
+  asset_type: futures
+  exchange: ice
+  currency: USD
+  tick_size: 0.05           # cents/lb
+  multiplier: 150           # 15,000 lb -> $1.50/cent; tick_value = $7.50
+  rolling_cycle: [F, H, K, N, U, X]
+  strips: 2
+  sector: agriculture
+  subsector: softs
+  session: ice_us_oj
+  settlement: physical
+
+# --- Equity index (ICE Futures Europe) ---
+
+ftse100:                    # ICE root Z
+  asset_type: futures
+  exchange: ice
+  currency: GBP
+  tick_size: 0.5            # index points
+  multiplier: 10            # GBP 10 / point; tick_value = GBP 5.00
+  rolling_cycle: [H, M, U, Z]
+  strips: 2
+  sector: equity
+  subsector: uk_large_cap
+  session: ice_eu_equity
+  settlement: cash
+
+# --- FX index (ICE Futures U.S.) ---
+
+dx:                         # US Dollar Index
+  asset_type: futures
+  exchange: ice
+  currency: USD
+  tick_size: 0.005          # index points
+  multiplier: 1000          # $1,000 x index; tick_value = $5.00
+  rolling_cycle: [H, M, U, Z]
+  strips: 2
+  sector: fx
+  subsector: index
+  session: ice_us_dx
+  settlement: physical

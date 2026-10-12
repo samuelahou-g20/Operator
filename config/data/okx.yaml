@@ -1,0 +1,38 @@
+# OKX v5 fetcher config (ARCHITECTURE §3). Public market-data endpoints, no credentials.
+#
+# Same multi-market shape as binance: one block per asset_type (linear USDT swaps +
+# spot), differing in the v5 `instType` param. Candle history is deep (~2019-2020)
+# but funding-rate history is retained only ~3 months — backfill takes what REST
+# offers; the daily fetcher accumulates funding forward. Swap candle volume is in
+# contracts (raw carries a ct_val column; normalize converts to base units).
+# Everything OKX-sourced is `small` storage (§2.2) -> one parquet file per symbol.
+
+max_workers: 2
+throttle_per_sec: 5             # per-endpoint IP buckets (history-candles 20/2s, funding 10/2s); one
+                                # global 5/s pacer keeps every bucket safe (code 50011 / 429 on breach)
+
+rest_url: "https://www.okx.com"
+
+markets:
+  perps:                                          # USDT-settled linear swaps
+    asset_type: perps
+    inst_type: SWAP
+    data_types:
+      bars:
+        timeframes: ["1h"]
+        storage:
+          "1h": small
+      funding_rate:
+        storage: small
+  spot:                                           # spot market (the long leg)
+    asset_type: spot
+    inst_type: SPOT
+    data_types:
+      bars:
+        timeframes: ["1h"]
+        storage:
+          "1h": small
+
+backfill:
+  start: "2021-01-01"             # default range start (CLI can override; funding capped by retention)
+  symbols: ["btcusdt", "ethusdt", "solusdt", "xrpusdt", "dogeusdt", "bnbusdt"]

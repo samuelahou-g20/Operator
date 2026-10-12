@@ -1,0 +1,46 @@
+# Data lake (large; contents never committed). Keep the directory skeleton via
+# .gitkeep — ignore each stage's *contents*, not the directory itself (a fully
+# ignored directory can't have files re-included).
+/data/raw/*
+/data/processed/*
+/data/state/*
+!/data/raw/.gitkeep
+!/data/processed/.gitkeep
+!/data/state/.gitkeep
+
+# Runtime + outputs (contents ignored; keep the empty dirs)
+/logs/*
+/results/*
+!/logs/.gitkeep
+!/results/.gitkeep
+
+# Credentials — never commit (only the env-var NAME is referenced in config)
+.env
+.env.*
+!.env.example
+
+# Prior-project reference code (kept locally for porting; not part of this repo)
+/old_code/
+
+# Python / uv
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# uv.lock IS committed (reproducible env) — do not ignore it.
+
+# assistant working memory (machine-local)
+.claude/agent-memory/
+*.sa.json
+.gsa_key.json
+gsa_key*.json
+*-sa-key.json
+.mm2_trades_gsa_key.json
+
+# Node + Python build noise (never tracked; listed so 264MB of node_modules stops
+# showing up in `git status` and in every agent's view of the tree)
+node_modules/
+__pycache__/
+*.pyc

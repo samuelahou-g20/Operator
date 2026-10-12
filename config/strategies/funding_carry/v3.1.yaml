@@ -1,0 +1,55 @@
+# Funding-carry v3.1 — v3.0 + a no-trade WEIGHT BAND on the inverse-vol reweights.
+# v3.0's inverse-vol weights drift daily as basis_vol updates, adding ~7x/yr of reweight turnover
+# (26x total vs v2.1's 20x) — much of it chasing noise in the 30d vol estimate. A per-name deadband
+# (only reweight when a name's target drifts > band, relative) damps that: it cuts turnover back to
+# ~v2.1 levels AND denoises the tilt, so it lifts BOTH the 1x and 2x-cost Sharpe. Full-universe:
+# net Sharpe 5.75 -> 6.32, 2x-cost Sharpe 2.46 -> 3.62, turnover 26x -> 20x, DD ~-3%; robust OOS
+# (test 24-26 Sh 7.5 / 2x 4.3). band=0.5 is the knee of the curve (wider approaches freeze-at-entry,
+# marginally better in-sample but over-fit-prone). Selection/sizing/veto/knobs = v3.0; validate held-out.
+
+name: funding_carry
+version: v3.1
+source: binance
+
+universe: all
+
+signal:
+  ewma_halflife: 7
+  theta_in_apr: 0.08
+  theta_keep_apr: 0.02
+
+selection:
+  k_in: null
+  k_keep: null
+
+features:
+  - {name: funding_vol, window: 30}
+  - {name: neg_freq,    window: 30}
+  - {name: basis,       window: 30}
+  - {name: basis_vol,   window: 30}
+
+veto:
+  - {feature: funding_vol, direction: max, cap: 0.75}
+  - {feature: neg_freq,    direction: max, cap: 0.40}
+  - {feature: basis,       direction: max, cap: 0.01}
+
+sizing:
+  scheme: inv_vol
+  vol_feature: basis_vol
+  band: 0.5                   # no-trade band: only reweight a name when its target drifts > 50% (relative)
+
+costs:
+  spot_taker: 0.0010
+  perp_taker: 0.0005
+  spot_maker: 0.0010
+  perp_maker: 0.0002
+  slippage_per_leg: 0.0002
+  holding_per_day: 0.0
+
+backtest:
+  start: "2021-01-01"
+  end: "2026-05-31"
+  timeframe: "1h"
+  rebalance: "1D"
+  warmup_days: 30
+  cost_stress_mult: [1.0, 2.0]

@@ -1,0 +1,37 @@
+# Bybit v5 fetcher config (ARCHITECTURE §3). Public market-data endpoints, no credentials.
+#
+# Same multi-market shape as binance: one block per asset_type (linear USDT perps +
+# spot), differing in the v5 `category` param. There is no bulk-dump host — all data
+# comes from the paginated v5 REST endpoints (newest-first, walked backwards), which
+# hold full history since 2020 including delisted linear perps. Everything
+# Bybit-sourced is `small` storage (§2.2): 1h bars (~48k rows/symbol) and funding
+# (~6.5k rows/symbol) -> one parquet file per symbol.
+
+max_workers: 4
+throttle_per_sec: 20            # public limit ~600 req/5s per IP (HTTP 403 on breach); stay well under
+
+rest_url: "https://api.bybit.com"
+
+markets:
+  perps:                                          # USDT-settled linear perpetuals
+    asset_type: perps
+    category: linear
+    data_types:
+      bars:
+        timeframes: ["1h"]
+        storage:
+          "1h": small
+      funding_rate:
+        storage: small
+  spot:                                           # spot market (the long leg)
+    asset_type: spot
+    category: spot
+    data_types:
+      bars:
+        timeframes: ["1h"]
+        storage:
+          "1h": small
+
+backfill:
+  start: "2021-01-01"             # default range start (CLI can override)
+  symbols: ["btcusdt", "ethusdt", "solusdt", "xrpusdt", "dogeusdt", "bnbusdt"]

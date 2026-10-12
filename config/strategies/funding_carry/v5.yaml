@@ -1,0 +1,95 @@
+# Funding-carry v5.0 — CAPITAL-EFFICIENCY / MARGIN accounting (returns per dollar of EQUITY).
+# Strategy behavior = v4 (v3.1 book + drawdown overlay), run via the v4 module:
+#   uv run python -m src.strategies.funding_carry.v4.backtest --config strategies/funding_carry/v5.yaml
+# What v5 adds is the explicit MARGIN model. Returns are booked per dollar of margin/equity:
+#   isolated perp margin: spot (N) + perp margin (N/k) = equity -> deploy N/E = k/(k+1)
+#     (k=1 -> 50/50 -> 0.5x the quoted returns; k=4 -> 80/80 -> 0.8x)
+#   portfolio margin (this config): the spot IS the perp's collateral (Binance PM, one account,
+#     "spot pnl covers the perp margin") -> deploy 1.0 — the setup v0–v4 implicitly assumed.
+# The engine also reports margin safety: daily uniMMR = haircut-adjusted equity / maintenance
+# margin, vs Binance's liquidation threshold 1.05. Research (v5_capital_efficiency/): worst-day
+# uniMMR >= ~11 even valuing all alt spot at 30% collateral -> the 1.0 deploy is safe; isolated
+# mode suffers real per-name liquidation events (alt perps rally >1/k intraday) and deploys less,
+# so PM dominates. Collateral ratios / MMRs below are conservative approximations of Binance's
+# tiered tables (majors ~0.95 / mids ~0.8 / alts 0.5; MMR majors 0.4% / mids 1% / alts 2%) —
+# pull /fapi/v1/leverageBracket + PM collateral-ratio API for live values before deployment.
+
+name: funding_carry
+version: v5.0
+source: binance
+
+universe: all
+
+signal:
+  ewma_halflife: 7
+  theta_in_apr: 0.08
+  theta_keep_apr: 0.02
+
+selection:
+  k_in: null
+  k_keep: null
+
+features:
+  - {name: funding_vol, window: 30}
+  - {name: neg_freq,    window: 30}
+  - {name: basis,       window: 30}
+  - {name: basis_vol,   window: 30}
+
+veto:
+  - {feature: funding_vol, direction: max, cap: 0.75}
+  - {feature: neg_freq,    direction: max, cap: 0.40}
+  - {feature: basis,       direction: max, cap: 0.01}
+
+sizing:
+  scheme: inv_vol
+  vol_feature: basis_vol
+  band: 0.5
+
+overlay:
+  qexit: 0.15
+  qreenter: 0.50
+  lookback: 252
+
+margin:
+  mode: portfolio             # spot collateralizes the perp (one venue / Binance Portfolio Margin)
+  reserve: 0.0                # cash held back (deploy = (1-reserve) x mode ratio)
+  collateral_default: 0.5     # conservative alt-spot collateral ratio (Binance tiers alts 0.2-0.65)
+  collateral_overrides:
+    btcusdt: 0.95
+    ethusdt: 0.95
+    bnbusdt: 0.80
+    solusdt: 0.80
+    xrpusdt: 0.80
+    adausdt: 0.80
+    dogeusdt: 0.80
+    ltcusdt: 0.80
+    linkusdt: 0.80
+    dotusdt: 0.80
+  mmr_default: 0.02           # alt perp tier-1 maintenance-margin rate (conservative)
+  mmr_overrides:
+    btcusdt: 0.004
+    ethusdt: 0.004
+    bnbusdt: 0.01
+    solusdt: 0.01
+    xrpusdt: 0.01
+    adausdt: 0.01
+    dogeusdt: 0.01
+    ltcusdt: 0.01
+    linkusdt: 0.01
+    dotusdt: 0.01
+
+costs:
+  spot_taker: 0.0010
+  perp_taker: 0.0005
+  spot_maker: 0.0010
+  perp_maker: 0.0002
+  slippage_per_leg: 0.0002
+  holding_per_day: 0.0
+
+backtest:
+  start: "2021-01-01"
+  end: "2026-05-31"
+  timeframe: "1h"
+  rebalance: "1D"
+  warmup_days: 30
+  cost_stress_mult: [1.0, 2.0]

@@ -1,0 +1,226 @@
+{
+  "name": "G-20 Trend Table — colour & type",
+  "description": "The visual vocabulary of the /poj asset card. Values only — the logic mapping data onto these colours is not part of this handoff.",
+  "typography": {
+    "font_family": "Arial, Helvetica, sans-serif",
+    "note": "System fonts only — nothing to license or ship. Weight is used sparingly: bold for values, regular for everything else.",
+    "sizes_px": {
+      "chart_label": 11,
+      "cell_label": 11,
+      "flow_stat": 12,
+      "size_key": 10,
+      "axis_end_word": 13
+    },
+    "server_side_stack": [
+      "Arial",
+      "Helvetica",
+      "Liberation Sans",
+      "DejaVu Sans"
+    ]
+  },
+  "surfaces": {
+    "paper": {
+      "hex": "#FAFAFA",
+      "use": "Page and plot background. The ground everything else is measured against."
+    },
+    "card": {
+      "hex": "#F4F4F2",
+      "use": "Panels, buttons, chart cards — a hair off paper."
+    },
+    "grid": {
+      "hex": "#EAEAE6",
+      "use": "In-plot gridlines. Horizontal only."
+    },
+    "hairline": {
+      "hex": "#DCDCD8",
+      "use": "Borders, cell edges, rules."
+    }
+  },
+  "ink": {
+    "ink": {
+      "hex": "#1A1A19",
+      "use": "Titles, primary text, and the price line when a single asset is shown."
+    },
+    "ink2": {
+      "hex": "#4A4A48",
+      "use": "Body text, legend text, secondary labels."
+    },
+    "muted": {
+      "hex": "#8A8A86",
+      "use": "Axis labels and ticks, eyebrows, sources, stat captions."
+    }
+  },
+  "element_map": {
+    "_rule": "Which token each thing on the card actually wears. Ramp references read <ramp>[<step>]; 'series' is step 5, 'secondary' step 4, 'wash' step 1. Text and chrome never take a ramp colour.",
+    "text_and_chrome": {
+      "chart_title": "ink",
+      "body_and_legend": "ink2",
+      "axis_title": "muted",
+      "axis_ticks": "muted",
+      "annotation_default": "ink2",
+      "gridlines": "grid",
+      "plot_background": "paper",
+      "paper_background": "paper"
+    },
+    "data_series": {
+      "price_line": "ink  (single asset; multi-asset takes categorical identity)",
+      "price_end_dot": "ink",
+      "up_series": "up[5]   — low_z / low_vol / low_days, displayed z_up, vol_up, days_up",
+      "down_series": "down[5] — high_z / high_vol / high_days, displayed z_down, vol_down, days_down",
+      "short_term_vol": "neutral[5] — period_vol_2w, displayed vol_short_term",
+      "threshold_dashes": "matching ramp [4] — the +/-2 guides; must recede behind the series they annotate",
+      "envelope_lines": "matching ramp [4]",
+      "regime_dot": "same step as the z lines (series, step 5), so a coin's dot and its line agree",
+      "quadrant_wash": "matching ramp [1], lerped from paper by cell strength",
+      "heatmap_cell": "matching ramp, interpolated along the steps up to [6]"
+    },
+    "order_flow": {
+      "buy_arrow": "buy_green",
+      "sell_arrow": "sell_red",
+      "net_position": "buy_green if positive, sell_red if negative, ink2 at zero",
+      "avg_buy_price": "buy_green",
+      "avg_sell_price": "sell_red",
+      "stat_caption": "muted",
+      "size_key_bubble": "#9ca3af with a 1px white outline"
+    }
+  },
+  "ramps": {
+    "_rule": "polarity picks the ramp (up=cool, down=warm); magnitude picks the step (light=weak, dark=strong). Text never wears a ramp colour.",
+    "_constraint": "The ramps are near-greyscale by design, so colour alone must never be the only thing separating up from down. Carry it in lightness, the legend or the label as well.",
+    "up": [
+      "#f5f5f5",
+      "#d0d8e0",
+      "#afbbc8",
+      "#8f9fb0",
+      "#718397",
+      "#54697f",
+      "#384f68"
+    ],
+    "down": [
+      "#f5f5f5",
+      "#e0d4cf",
+      "#c7b5ae",
+      "#ae978d",
+      "#957b6f",
+      "#7d5f52",
+      "#644436"
+    ],
+    "neutral": [
+      "#f5f5f5",
+      "#d7d7d7",
+      "#b9b9b9",
+      "#9d9d9d",
+      "#818181",
+      "#666666",
+      "#4d4d4d"
+    ],
+    "step_roles": {
+      "wash": {
+        "step": 1,
+        "use": "Background tints — regime quadrants, any fill behind data."
+      },
+      "secondary": {
+        "step": 4,
+        "use": "Threshold dashes and envelope lines. Must recede behind the series they annotate."
+      },
+      "series": {
+        "step": 5,
+        "use": "Price and signal lines, regime dots. The workhorse step."
+      },
+      "fm_max": {
+        "step": 6,
+        "use": "Deepest heat-map cell. Nothing goes darker."
+      }
+    },
+    "aliases": {
+      "up_line": "#54697f",
+      "down_line": "#7d5f52",
+      "neutral_line": "#666666",
+      "up_secondary": "#718397",
+      "down_secondary": "#957b6f"
+    }
+  },
+  "regime_grid": {
+    "_rule": "3x3 quadrant wash, lerped from paper toward the ramp's wash step. Mixed-extreme corners fold into neutral.",
+    "cells": {
+      "Bullish/Bullish": "#d0d8e0",
+      "Bullish/Neutral": "#eaedf0",
+      "Bullish/Bearish": "#e3e3e3",
+      "Neutral/Bullish": "#eaedf0",
+      "Neutral/Neutral": "#e7e7e7",
+      "Neutral/Bearish": "#f0ebe9",
+      "Bearish/Bullish": "#e3e3e3",
+      "Bearish/Neutral": "#f0ebe9",
+      "Bearish/Bearish": "#e0d4cf"
+    }
+  },
+  "categorical": {
+    "_rule": "Identity only (which asset), never direction. FIXED order — it is what the colour-vision optimizer maximized. Do not sort or insert. A single selected asset wears ink instead.",
+    "asset_colors": [
+      "#418ad1",
+      "#5a6200",
+      "#c55e8a",
+      "#006516",
+      "#0096c5",
+      "#c86265",
+      "#873800",
+      "#7b2e76",
+      "#00949e",
+      "#3f479e"
+    ]
+  },
+  "semantic_accents": {
+    "_rule": "The only saturated colours in the system. Reserved for order flow and money, never for trend direction.",
+    "buy_green": "#047857",
+    "sell_red": "#b91c1c"
+  },
+  "brand_banner": {
+    "_rule": "Horizontal gradient, wordmark set white top-right. Rendered, not screenshotted (src/reports/branding.py).",
+    "wordmark": "G—20",
+    "gradient_stops": [
+      {
+        "pos": 0.0,
+        "hex": "#e8682f"
+      },
+      {
+        "pos": 0.3,
+        "hex": "#bc9680"
+      },
+      {
+        "pos": 0.48,
+        "hex": "#969ca0"
+      },
+      {
+        "pos": 0.6,
+        "hex": "#608ca8"
+      },
+      {
+        "pos": 0.74,
+        "hex": "#1e5c95"
+      },
+      {
+        "pos": 1.0,
+        "hex": "#091630"
+      }
+    ]
+  },
+  "chart_chrome": {
+    "gridlines": "horizontal only",
+    "tick_marks": "none",
+    "axis_spines": "none",
+    "line_width_px": 2.2,
+    "line_opacity": 1.0,
+    "end_dot_px": 7,
+    "legend": "borderless, transparent background",
+    "date_format": "day-first, e.g. '3 May'"
+  },
+  "naming": {
+    "_rule": "Display labels read metric-first, direction-second.",
+    "examples": {
+      "low_z": "z_up",
+      "high_z": "z_down",
+      "low_vol": "vol_up",
+      "period_vol_2w": "vol_short_term"
+    }
+  }
+}

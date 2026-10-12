@@ -1,0 +1,33 @@
+# Monitoring dashboard universe: named groups of symbols to watch live.
+# Consumed by src/monitor (scripts.dashboard). This is the ONLY place the
+# dashboard's group layout lives — instrument facts stay in config/universe/.
+#
+# Each group sets source/asset_type/timeframe once; a symbol may be a bare
+# string (inherits the group's values) or a mapping that overrides them.
+# `timeframe` is the bar granularity used to compute trend/JASON/vol features;
+# live price + last_updated come from the Redis trade stream. The dashboard
+# auto-starts a streamer for any symbol nobody is publishing (disable with
+# `--no-stream`); until ticks arrive Price/Updated read "no stream".
+
+defaults:
+  timeframe: 1h            # feature bar timeframe when a group omits it
+  stale_after: 120         # seconds without a live tick before a row reads stale
+
+groups:
+  - name: Crypto Majors
+    source: binance
+    asset_type: perps
+    symbols: [btcusdt, ethusdt, solusdt]
+
+  - name: Crypto L1
+    source: binance
+    asset_type: perps
+    symbols: [avaxusdt, adausdt, dotusdt]
+
+  # Mixed source example — uncomment once CME 1h bars are available:
+  # - name: Index Futures
+  #   source: cme
+  #   asset_type: futures
+  #   symbols:
+  #     - es
+  #     - {symbol: nq, timeframe: 1h}

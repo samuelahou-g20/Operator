@@ -1,0 +1,63 @@
+# Funding-carry v4.0 — v3.1 + a portfolio-level "shadow" DRAWDOWN OVERLAY.
+# v3.1's signal/selection/sizing (below) run untouched as the shadow; the engine gates the whole
+# book to cash when the shadow's OWN equity is in a sustained drawdown, and re-enters when it
+# recovers. The switch is calibrated point-in-time as percentiles of the shadow's drawdown history
+# (exit at the 15th pctile, re-enter at the 50th; expanding, 1yr min) — self-scaling, no look-ahead.
+# Research (research/funding_carry/v4_drawdown_overlay/): same net return, maxDD -2.8%->-0.9%,
+# Calmar 3.5->11, sits out the 2022 dead regime, lower turnover, beats a random-exit placebo.
+# It's an asymmetric safety layer (inactive when there's no drawdown). CAVEAT: the benefit rests on
+# ~one drawdown episode (2022) and it's blind in its first ~year (needs history to calibrate) —
+# earns full trust as more drawdowns accrue. Per-asset shadows were tested and FAIL (whipsaw); the
+# overlay is portfolio-level only.
+
+name: funding_carry
+version: v4.0
+source: binance
+
+universe: all
+
+signal:
+  ewma_halflife: 7
+  theta_in_apr: 0.08
+  theta_keep_apr: 0.02
+
+selection:
+  k_in: null
+  k_keep: null
+
+features:
+  - {name: funding_vol, window: 30}
+  - {name: neg_freq,    window: 30}
+  - {name: basis,       window: 30}
+  - {name: basis_vol,   window: 30}
+
+veto:
+  - {feature: funding_vol, direction: max, cap: 0.75}
+  - {feature: neg_freq,    direction: max, cap: 0.40}
+  - {feature: basis,       direction: max, cap: 0.01}
+
+sizing:
+  scheme: inv_vol
+  vol_feature: basis_vol
+  band: 0.5
+
+overlay:
+  qexit: 0.15                 # de-risk when drawdown falls below its 15th-percentile (deep) level
+  qreenter: 0.50              # re-enter when it heals back above the median drawdown
+  lookback: 252               # min history (days) before the overlay can act (expanding percentiles)
+
+costs:
+  spot_taker: 0.0010
+  perp_taker: 0.0005
+  spot_maker: 0.0010
+  perp_maker: 0.0002
+  slippage_per_leg: 0.0002
+  holding_per_day: 0.0
+
+backtest:
+  start: "2021-01-01"
+  end: "2026-05-31"
+  timeframe: "1h"
+  rebalance: "1D"
+  warmup_days: 30
+  cost_stress_mult: [1.0, 2.0]

@@ -1,0 +1,19 @@
+# Derive (app.derive.xyz) config: read-only public market data (ARCHITECTURE §9).
+#
+# Derive runs TWO live hosts. `api.lyra.finance` is the production matching engine the
+# app trades on today — real books, real trades, and the "fat" get_ticker payload with
+# named greeks. `api.derive.xyz/v3` is the host the v3 docs describe: it answers, and it
+# serves instruments and mark/IV, but its books were empty when checked (2026-09-17), so
+# it is NOT the default. Point `rest_url` at it only to test the v3 deployment.
+#
+# Public market data needs no credentials. Private endpoints (subaccount state, orders,
+# RFQ) authenticate with EIP-191 personal_sign over a millisecond timestamp, sent as the
+# X-Derive{Wallet,Timestamp,Signature} headers — deliberately NOT implemented here; when
+# it is, the wallet/session-key env-var NAMES go in an `execution:` block below.
+#
+# Options are named `<CCY>-<YYYYMMDD>-<STRIKE>-<C|P>`, uppercase, `_` as the strike
+# decimal separator (`2400_5`), and settle 08:00 UTC. Nothing here writes the data lake.
+
+rest_url: "https://api.lyra.finance"
+
+throttle_per_sec: 4        # public budget is 5 TPS per IP (25 points / 5s window)

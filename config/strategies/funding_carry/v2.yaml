@@ -1,0 +1,51 @@
+# Funding-carry v2.0 — selection scaffold on the full universe, BREADTH + tail-veto framing.
+# Same score + Layer-D level hysteresis as v1 (knobs kept — validated), plus a generic veto that
+# TRIMS the pathological tail while preserving v1's diversification (K left generous / uncapped).
+# Rationale: validation showed concentrating by funding rank LOSES to v1's diversified band — the
+# risk that bites is idiosyncratic BASIS, which diversification (not funding vetoes) controls. So
+# v2.0 keeps breadth and only removes clearly-unhealthy names; the generic veto (list of
+# {feature, direction, cap}) lets later point-versions add the real levers — v2.1 BASIS-blowout
+# (the attributed killer), then liquidity / age. Caps here are conservative tail-trims, not tuned
+# optima — validate on held-out data before trusting magnitudes.
+
+name: funding_carry
+version: v2.0
+source: binance
+
+universe: all                 # resolved to every lake name with all 3 legs (funding+perp1h+spot1h)
+
+signal:
+  ewma_halflife: 7            # kept from v1 (validated)
+  theta_in_apr: 0.08          # enter only names with EWMA-APR >= 8%
+  theta_keep_apr: 0.02        # keep while >= 2%
+
+selection:
+  k_in: null                  # null = no rank cap → hold the whole healthy band (breadth preserved)
+  k_keep: null                # (a finite cap here would concentrate → the losing v2 config)
+
+# Feature panel the engine builds (causal, eligibility-masked) and passes to decide for the veto.
+features:
+  - {name: funding_vol, window: 30}   # rolling std of daily funding income x365 (annualized funding vol)
+  - {name: neg_freq,    window: 30}   # fraction of the last 30d with negative funding
+
+# Generic veto: drop names failing any rule. v2.0 = funding instability only (a weak trim; the
+# material gains are expected from the v2.1 basis veto).
+veto:
+  - {feature: funding_vol, direction: max, cap: 0.75}   # exclude names with >75% annualized funding vol
+  - {feature: neg_freq,    direction: max, cap: 0.40}    # exclude names negative >40% of the last 30d
+
+costs:
+  spot_taker: 0.0010
+  perp_taker: 0.0005
+  spot_maker: 0.0010
+  perp_maker: 0.0002
+  slippage_per_leg: 0.0002
+  holding_per_day: 0.0
+
+backtest:
+  start: "2021-01-01"
+  end: "2026-05-31"
+  timeframe: "1h"
+  rebalance: "1D"
+  warmup_days: 30             # >= the funding-vol/neg-freq window so the veto features have settled
+  cost_stress_mult: [1.0, 2.0]

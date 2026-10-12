@@ -1,0 +1,52 @@
+# Hyperliquid config: execution (ARCHITECTURE §9) + market-data fetching (§3, §6.1).
+#
+# Execution: standard perps via the Hyperliquid Python SDK. Only env-var NAMES here;
+# values live in .env.
+#
+# Data side: the single public POST /info endpoint, no credentials (the S3 archive
+# stays dropped — requester-pays; REST covers bars + funding). Perp funding settles
+# HOURLY (the rate IS the hourly rate — never assume 8h/x3-day) with history back to
+# 2023-05-12 including delisted coins. Candles keep only the most recent ~5000 per
+# interval (1h ~ 208 rolling days: backfill takes what the window offers, the daily
+# fetcher accumulates forward) except 1d, which is full history. Spot legs are the
+# Unit-bridged assets quoted in USDC, addressed by their "@{index}" pair key
+# resolved from spotMeta at run time. Lake symbols are lowercase venue-native coin
+# names, and the perp and spot legs of a pair DIFFER (btc vs ubtc) — so backfill
+# defaults are per-market. Everything Hyperliquid-sourced is `small` storage (§2.2)
+# -> one parquet file per symbol.
+
+execution:
+  private_key_env: HYPERLIQUID_PRIVATE_KEY
+  main_address_env: HL_MAIN_ADDRESS    # optional — for agent-wallet setups
+
+max_workers: 2
+throttle_per_sec: 0.4           # 1200 weight/min/IP and fundingHistory pages cost ~45 weight:
+                                # 0.4/s x 45 ~ 1080/min stays under budget (4/s 429'd live 2026-07-02)
+
+rest_url: "https://api.hyperliquid.xyz"
+
+markets:
+  perps:                                          # USDC-margined perpetuals
+    asset_type: perps
+    data_types:
+      bars:
+        timeframes: ["1h", "1d"]
+        storage:
+          "1h": small
+          "1d": small
+      funding_rate:
+        storage: small
+    backfill:
+      start: "2023-05-01"       # earliest funding record 2023-05-12; 1h bars clamp to ~208d
+      symbols: ["btc", "eth", "sol"]
+  spot:                                           # Unit-bridged spot (the long leg)
+    asset_type: spot
+    data_types:
+      bars:
+        timeframes: ["1h", "1d"]
+        storage:
+          "1h": small
+          "1d": small
+    backfill:
+      start: "2025-02-01"       # UBTC listed 2025-02-03; UETH 2025-03-26; USOL 2025-05-10
+      symbols: ["ubtc", "ueth", "usol"]

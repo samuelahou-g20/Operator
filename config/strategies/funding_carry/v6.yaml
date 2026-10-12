@@ -1,0 +1,91 @@
+# Funding-carry v6.0 — MIN-AGE VETO (sit out the just-listed window).
+# Strategy = v5 (v3.1 book + v4 drawdown overlay + portfolio-margin accounting); the ONE change is a
+# maturity veto: a name is not tradeable until 15 days after its first eligible day (engine `age`
+# feature = days since first day both spot & perp bars exist; pre-2021 names float as "old").
+# Research (v6_selection_refinements/min_age_veto.ipynb): the just-listed cohort earns carry at toxic
+# quality (standalone Sh 0.93, maxDD -11.7%, turnover 41x — the survivorship-audit tail); train
+# 2021-23 picks X=15, frozen on test 2024-26: Sh 7.52->8.05, Sh@2x 4.32->5.14, maxDD -0.56->-0.41%,
+# lower turnover; the gain is a broad X=15-45 plateau, not a knife-edge. Config-only version (v4 code):
+#   uv run python -m src.strategies.funding_carry.v4.backtest --config strategies/funding_carry/v6.yaml
+
+name: funding_carry
+version: v6.0
+source: binance
+
+universe: all
+
+signal:
+  ewma_halflife: 7
+  theta_in_apr: 0.08
+  theta_keep_apr: 0.02
+
+selection:
+  k_in: null
+  k_keep: null
+
+features:
+  - {name: funding_vol, window: 30}
+  - {name: neg_freq,    window: 30}
+  - {name: basis,       window: 30}
+  - {name: basis_vol,   window: 30}
+  - {name: age}
+
+veto:
+  - {feature: funding_vol, direction: max, cap: 0.75}
+  - {feature: neg_freq,    direction: max, cap: 0.40}
+  - {feature: basis,       direction: max, cap: 0.01}
+  - {feature: age,         direction: min, cap: 15}
+
+sizing:
+  scheme: inv_vol
+  vol_feature: basis_vol
+  band: 0.5
+
+overlay:
+  qexit: 0.15
+  qreenter: 0.50
+  lookback: 252
+
+margin:
+  mode: portfolio             # spot collateralizes the perp (one venue / Binance Portfolio Margin)
+  reserve: 0.0
+  collateral_default: 0.5
+  collateral_overrides:
+    btcusdt: 0.95
+    ethusdt: 0.95
+    bnbusdt: 0.80
+    solusdt: 0.80
+    xrpusdt: 0.80
+    adausdt: 0.80
+    dogeusdt: 0.80
+    ltcusdt: 0.80
+    linkusdt: 0.80
+    dotusdt: 0.80
+  mmr_default: 0.02
+  mmr_overrides:
+    btcusdt: 0.004
+    ethusdt: 0.004
+    bnbusdt: 0.01
+    solusdt: 0.01
+    xrpusdt: 0.01
+    adausdt: 0.01
+    dogeusdt: 0.01
+    ltcusdt: 0.01
+    linkusdt: 0.01
+    dotusdt: 0.01
+
+costs:
+  spot_taker: 0.0010
+  perp_taker: 0.0005
+  spot_maker: 0.0010
+  perp_maker: 0.0002
+  slippage_per_leg: 0.0002
+  holding_per_day: 0.0
+
+backtest:
+  start: "2021-01-01"
+  end: "2026-05-31"
+  timeframe: "1h"
+  rebalance: "1D"
+  warmup_days: 30
+  cost_stress_mult: [1.0, 2.0]

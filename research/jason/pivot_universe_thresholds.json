@@ -1,0 +1,614 @@
+{
+  "meta": {
+    "universe": [
+      "COMPUSDT",
+      "ZECUSDT",
+      "XRPUSDT",
+      "BTCUSDT",
+      "ETHUSDT",
+      "SOLUSDT",
+      "AAVEUSDT",
+      "BCHUSDT",
+      "BNBUSDT",
+      "NEARUSDT",
+      "ICPUSDT",
+      "UNIUSDT",
+      "PENDLEUSDT",
+      "RUNEUSDT",
+      "LDOUSDT",
+      "JTOUSDT",
+      "POLUSDT",
+      "JUPUSDT",
+      "TAOUSDT",
+      "INJUSDT",
+      "ENAUSDT",
+      "ONDOUSDT",
+      "ETHFIUSDT",
+      "HBARUSDT",
+      "RAYUSDT",
+      "CAKEUSDT",
+      "XLMUSDT",
+      "ADAUSDT",
+      "LINKUSDT"
+    ],
+    "tf": "1h",
+    "lookback": 7,
+    "n_pivots": 5,
+    "min_days": 1,
+    "q_significance": 0.5,
+    "horizons_bars": [
+      12,
+      24,
+      48,
+      96,
+      168
+    ],
+    "n_bars": 1118965,
+    "n_pivots_labeled": 137705
+  },
+  "pooled": {
+    "z_dn_quantiles": {
+      "p50": 0.87,
+      "p60": 1.0,
+      "p70": 1.16,
+      "p80": 1.34,
+      "p90": 1.6
+    },
+    "z_up_quantiles": {
+      "p50": 0.9,
+      "p60": 1.05,
+      "p70": 1.21,
+      "p80": 1.41,
+      "p90": 1.7
+    },
+    "z_dn_at_bottoms_median": 0.29,
+    "z_up_at_tops_median": 0.33,
+    "gap_days_median": 0.042,
+    "edge_spearman": {
+      "12h": {
+        "corr(z_dn,fwd)": 0.0128,
+        "corr(z_up,fwd)": -0.0095
+      },
+      "24h": {
+        "corr(z_dn,fwd)": 0.0093,
+        "corr(z_up,fwd)": -0.0071
+      },
+      "48h": {
+        "corr(z_dn,fwd)": -0.0056,
+        "corr(z_up,fwd)": 0.011
+      },
+      "96h": {
+        "corr(z_dn,fwd)": -0.0064,
+        "corr(z_up,fwd)": 0.001
+      },
+      "168h": {
+        "corr(z_dn,fwd)": -0.0103,
+        "corr(z_up,fwd)": -0.0022
+      }
+    }
+  },
+  "per_name": {
+    "COMPUSDT": {
+      "z_dn_quantiles": {
+        "p50": 0.9,
+        "p60": 1.02,
+        "p70": 1.16,
+        "p80": 1.33,
+        "p90": 1.57
+      },
+      "z_up_quantiles": {
+        "p50": 0.91,
+        "p60": 1.05,
+        "p70": 1.2,
+        "p80": 1.38,
+        "p90": 1.66
+      },
+      "z_dn_at_bottoms_median": 1.19,
+      "z_up_at_tops_median": 1.22
+    },
+    "ZECUSDT": {
+      "z_dn_quantiles": {
+        "p50": 0.84,
+        "p60": 0.97,
+        "p70": 1.13,
+        "p80": 1.3,
+        "p90": 1.54
+      },
+      "z_up_quantiles": {
+        "p50": 0.94,
+        "p60": 1.08,
+        "p70": 1.24,
+        "p80": 1.42,
+        "p90": 1.7
+      },
+      "z_dn_at_bottoms_median": 1.14,
+      "z_up_at_tops_median": 1.26
+    },
+    "XRPUSDT": {
+      "z_dn_quantiles": {
+        "p50": 0.83,
+        "p60": 0.93,
+        "p70": 1.06,
+        "p80": 1.21,
+        "p90": 1.43
+      },
+      "z_up_quantiles": {
+        "p50": 0.9,
+        "p60": 1.03,
+        "p70": 1.16,
+        "p80": 1.33,
+        "p90": 1.58
+      },
+      "z_dn_at_bottoms_median": 1.11,
+      "z_up_at_tops_median": 1.17
+    },
+    "BTCUSDT": {
+      "z_dn_quantiles": {
+        "p50": 0.83,
+        "p60": 0.96,
+        "p70": 1.1,
+        "p80": 1.29,
+        "p90": 1.56
+      },
+      "z_up_quantiles": {
+        "p50": 0.93,
+        "p60": 1.08,
+        "p70": 1.24,
+        "p80": 1.44,
+        "p90": 1.74
+      },
+      "z_dn_at_bottoms_median": 1.12,
+      "z_up_at_tops_median": 1.22
+    },
+    "ETHUSDT": {
+      "z_dn_quantiles": {
+        "p50": 0.82,
+        "p60": 0.95,
+        "p70": 1.1,
+        "p80": 1.28,
+        "p90": 1.55
+      },
+      "z_up_quantiles": {
+        "p50": 0.96,
+        "p60": 1.1,
+        "p70": 1.26,
+        "p80": 1.46,
+        "p90": 1.76
+      },
+      "z_dn_at_bottoms_median": 1.15,
+      "z_up_at_tops_median": 1.25
+    },
+    "SOLUSDT": {
+      "z_dn_quantiles": {
+        "p50": 0.86,
+        "p60": 0.99,
+        "p70": 1.14,
+        "p80": 1.31,
+        "p90": 1.58
+      },
+      "z_up_quantiles": {
+        "p50": 0.95,
+        "p60": 1.1,
+        "p70": 1.27,
+        "p80": 1.47,
+        "p90": 1.76
+      },
+      "z_dn_at_bottoms_median": 1.19,
+      "z_up_at_tops_median": 1.285
+    },
+    "AAVEUSDT": {
+      "z_dn_quantiles": {
+        "p50": 0.9,
+        "p60": 1.04,
+        "p70": 1.19,
+        "p80": 1.37,
+        "p90": 1.63
+      },
+      "z_up_quantiles": {
+        "p50": 0.94,
+        "p60": 1.08,
+        "p70": 1.25,
+        "p80": 1.46,
+        "p90": 1.76
+      },
+      "z_dn_at_bottoms_median": 1.22,
+      "z_up_at_tops_median": 1.24
+    },
+    "BCHUSDT": {
+      "z_dn_quantiles": {
+        "p50": 0.87,
+        "p60": 1.0,
+        "p70": 1.14,
+        "p80": 1.31,
+        "p90": 1.55
+      },
+      "z_up_quantiles": {
+        "p50": 0.9,
+        "p60": 1.03,
+        "p70": 1.18,
+        "p80": 1.37,
+        "p90": 1.66
+      },
+      "z_dn_at_bottoms_median": 1.17,
+      "z_up_at_tops_median": 1.2
+    },
+    "BNBUSDT": {
+      "z_dn_quantiles": {
+        "p50": 0.82,
+        "p60": 0.94,
+        "p70": 1.08,
+        "p80": 1.25,
+        "p90": 1.52
+      },
+      "z_up_quantiles": {
+        "p50": 0.99,
+        "p60": 1.14,
+        "p70": 1.3,
+        "p80": 1.49,
+        "p90": 1.76
+      },
+      "z_dn_at_bottoms_median": 1.15,
+      "z_up_at_tops_median": 1.31
+    },
+    "NEARUSDT": {
+      "z_dn_quantiles": {
+        "p50": 0.9,
+        "p60": 1.04,
+        "p70": 1.2,
+        "p80": 1.38,
+        "p90": 1.63
+      },
+      "z_up_quantiles": {
+        "p50": 0.9,
+        "p60": 1.05,
+        "p70": 1.21,
+        "p80": 1.41,
+        "p90": 1.7
+      },
+      "z_dn_at_bottoms_median": 1.21,
+      "z_up_at_tops_median": 1.21
+    },
+    "ICPUSDT": {
+      "z_dn_quantiles": {
+        "p50": 0.88,
+        "p60": 1.02,
+        "p70": 1.16,
+        "p80": 1.33,
+        "p90": 1.55
+      },
+      "z_up_quantiles": {
+        "p50": 0.81,
+        "p60": 0.95,
+        "p70": 1.11,
+        "p80": 1.31,
+        "p90": 1.59
+      },
+      "z_dn_at_bottoms_median": 0.0,
+      "z_up_at_tops_median": 0.0
+    },
+    "UNIUSDT": {
+      "z_dn_quantiles": {
+        "p50": 0.9,
+        "p60": 1.04,
+        "p70": 1.19,
+        "p80": 1.37,
+        "p90": 1.62
+      },
+      "z_up_quantiles": {
+        "p50": 0.93,
+        "p60": 1.07,
+        "p70": 1.23,
+        "p80": 1.43,
+        "p90": 1.7
+      },
+      "z_dn_at_bottoms_median": 1.22,
+      "z_up_at_tops_median": 1.25
+    },
+    "PENDLEUSDT": {
+      "z_dn_quantiles": {
+        "p50": 0.91,
+        "p60": 1.05,
+        "p70": 1.21,
+        "p80": 1.39,
+        "p90": 1.68
+      },
+      "z_up_quantiles": {
+        "p50": 0.96,
+        "p60": 1.1,
+        "p70": 1.26,
+        "p80": 1.44,
+        "p90": 1.72
+      },
+      "z_dn_at_bottoms_median": 1.21,
+      "z_up_at_tops_median": 1.3
+    },
+    "RUNEUSDT": {
+      "z_dn_quantiles": {
+        "p50": 0.93,
+        "p60": 1.08,
+        "p70": 1.25,
+        "p80": 1.46,
+        "p90": 1.72
+      },
+      "z_up_quantiles": {
+        "p50": 0.95,
+        "p60": 1.11,
+        "p70": 1.3,
+        "p80": 1.53,
+        "p90": 1.86
+      },
+      "z_dn_at_bottoms_median": 1.27,
+      "z_up_at_tops_median": 1.3
+    },
+    "LDOUSDT": {
+      "z_dn_quantiles": {
+        "p50": 0.95,
+        "p60": 1.09,
+        "p70": 1.26,
+        "p80": 1.44,
+        "p90": 1.68
+      },
+      "z_up_quantiles": {
+        "p50": 0.9,
+        "p60": 1.05,
+        "p70": 1.21,
+        "p80": 1.41,
+        "p90": 1.68
+      },
+      "z_dn_at_bottoms_median": 1.23,
+      "z_up_at_tops_median": 1.23
+    },
+    "JTOUSDT": {
+      "z_dn_quantiles": {
+        "p50": 0.98,
+        "p60": 1.13,
+        "p70": 1.29,
+        "p80": 1.48,
+        "p90": 1.75
+      },
+      "z_up_quantiles": {
+        "p50": 0.9,
+        "p60": 1.06,
+        "p70": 1.23,
+        "p80": 1.43,
+        "p90": 1.73
+      },
+      "z_dn_at_bottoms_median": 1.28,
+      "z_up_at_tops_median": 1.27
+    },
+    "POLUSDT": {
+      "z_dn_quantiles": {
+        "p50": 0.93,
+        "p60": 1.07,
+        "p70": 1.22,
+        "p80": 1.39,
+        "p90": 1.65
+      },
+      "z_up_quantiles": {
+        "p50": 0.89,
+        "p60": 1.03,
+        "p70": 1.19,
+        "p80": 1.396,
+        "p90": 1.67
+      },
+      "z_dn_at_bottoms_median": 1.24,
+      "z_up_at_tops_median": 1.175
+    },
+    "JUPUSDT": {
+      "z_dn_quantiles": {
+        "p50": 0.95,
+        "p60": 1.09,
+        "p70": 1.24,
+        "p80": 1.45,
+        "p90": 1.73
+      },
+      "z_up_quantiles": {
+        "p50": 0.93,
+        "p60": 1.09,
+        "p70": 1.26,
+        "p80": 1.47,
+        "p90": 1.76
+      },
+      "z_dn_at_bottoms_median": 1.25,
+      "z_up_at_tops_median": 1.28
+    },
+    "TAOUSDT": {
+      "z_dn_quantiles": {
+        "p50": 0.93,
+        "p60": 1.06,
+        "p70": 1.2,
+        "p80": 1.36,
+        "p90": 1.6
+      },
+      "z_up_quantiles": {
+        "p50": 0.86,
+        "p60": 1.02,
+        "p70": 1.2,
+        "p80": 1.43,
+        "p90": 1.77
+      },
+      "z_dn_at_bottoms_median": 1.24,
+      "z_up_at_tops_median": 1.2
+    },
+    "INJUSDT": {
+      "z_dn_quantiles": {
+        "p50": 0.9,
+        "p60": 1.04,
+        "p70": 1.19,
+        "p80": 1.38,
+        "p90": 1.63
+      },
+      "z_up_quantiles": {
+        "p50": 0.93,
+        "p60": 1.07,
+        "p70": 1.23,
+        "p80": 1.42,
+        "p90": 1.7
+      },
+      "z_dn_at_bottoms_median": 1.21,
+      "z_up_at_tops_median": 1.26
+    },
+    "ENAUSDT": {
+      "z_dn_quantiles": {
+        "p50": 1.01,
+        "p60": 1.16,
+        "p70": 1.32,
+        "p80": 1.52,
+        "p90": 1.8
+      },
+      "z_up_quantiles": {
+        "p50": 0.86,
+        "p60": 1.02,
+        "p70": 1.19,
+        "p80": 1.41,
+        "p90": 1.71
+      },
+      "z_dn_at_bottoms_median": 1.31,
+      "z_up_at_tops_median": 1.185
+    },
+    "ONDOUSDT": {
+      "z_dn_quantiles": {
+        "p50": 0.92,
+        "p60": 1.06,
+        "p70": 1.21,
+        "p80": 1.4,
+        "p90": 1.65
+      },
+      "z_up_quantiles": {
+        "p50": 0.89,
+        "p60": 1.05,
+        "p70": 1.21,
+        "p80": 1.41,
+        "p90": 1.71
+      },
+      "z_dn_at_bottoms_median": 1.23,
+      "z_up_at_tops_median": 1.25
+    },
+    "ETHFIUSDT": {
+      "z_dn_quantiles": {
+        "p50": 0.92,
+        "p60": 1.07,
+        "p70": 1.22,
+        "p80": 1.4,
+        "p90": 1.67
+      },
+      "z_up_quantiles": {
+        "p50": 0.9,
+        "p60": 1.04,
+        "p70": 1.19,
+        "p80": 1.37,
+        "p90": 1.66
+      },
+      "z_dn_at_bottoms_median": 1.25,
+      "z_up_at_tops_median": 1.22
+    },
+    "HBARUSDT": {
+      "z_dn_quantiles": {
+        "p50": 0.92,
+        "p60": 1.05,
+        "p70": 1.19,
+        "p80": 1.35,
+        "p90": 1.58
+      },
+      "z_up_quantiles": {
+        "p50": 0.89,
+        "p60": 1.03,
+        "p70": 1.18,
+        "p80": 1.36,
+        "p90": 1.63
+      },
+      "z_dn_at_bottoms_median": 1.23,
+      "z_up_at_tops_median": 1.19
+    },
+    "RAYUSDT": {
+      "z_dn_quantiles": {
+        "p50": 0.0,
+        "p60": 0.0,
+        "p70": 0.0,
+        "p80": 0.58,
+        "p90": 1.25
+      },
+      "z_up_quantiles": {
+        "p50": 0.0,
+        "p60": 0.0,
+        "p70": 0.0,
+        "p80": 0.44,
+        "p90": 1.01
+      },
+      "z_dn_at_bottoms_median": 0.0,
+      "z_up_at_tops_median": 0.0
+    },
+    "CAKEUSDT": {
+      "z_dn_quantiles": {
+        "p50": 0.95,
+        "p60": 1.09,
+        "p70": 1.25,
+        "p80": 1.44,
+        "p90": 1.69
+      },
+      "z_up_quantiles": {
+        "p50": 0.97,
+        "p60": 1.11,
+        "p70": 1.27,
+        "p80": 1.47,
+        "p90": 1.75
+      },
+      "z_dn_at_bottoms_median": 1.3,
+      "z_up_at_tops_median": 1.255
+    },
+    "XLMUSDT": {
+      "z_dn_quantiles": {
+        "p50": 0.88,
+        "p60": 1.01,
+        "p70": 1.14,
+        "p80": 1.3,
+        "p90": 1.54
+      },
+      "z_up_quantiles": {
+        "p50": 0.92,
+        "p60": 1.05,
+        "p70": 1.2,
+        "p80": 1.39,
+        "p90": 1.67
+      },
+      "z_dn_at_bottoms_median": 1.18,
+      "z_up_at_tops_median": 1.23
+    },
+    "ADAUSDT": {
+      "z_dn_quantiles": {
+        "p50": 0.87,
+        "p60": 0.99,
+        "p70": 1.13,
+        "p80": 1.3,
+        "p90": 1.55
+      },
+      "z_up_quantiles": {
+        "p50": 0.9,
+        "p60": 1.04,
+        "p70": 1.2,
+        "p80": 1.4,
+        "p90": 1.68
+      },
+      "z_dn_at_bottoms_median": 1.16,
+      "z_up_at_tops_median": 1.21
+    },
+    "LINKUSDT": {
+      "z_dn_quantiles": {
+        "p50": 0.87,
+        "p60": 1.01,
+        "p70": 1.17,
+        "p80": 1.34,
+        "p90": 1.59
+      },
+      "z_up_quantiles": {
+        "p50": 0.95,
+        "p60": 1.1,
+        "p70": 1.27,
+        "p80": 1.48,
+        "p90": 1.78
+      },
+      "z_dn_at_bottoms_median": 1.2,
+      "z_up_at_tops_median": 1.26
+    }
+  }
+}

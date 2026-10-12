@@ -1,0 +1,33 @@
+# Funding-carry v1 — v0 + Layer D (hysteresis hold/keep). Only the decision changes vs v0:
+# enter on a high EWMA-mean APR, KEEP down to a low one, exit below — sticky, so it cuts churn
+# and exits before funding flips negative. Universe / equal-weight / costs / daily eval = v0.
+# Thresholds are research defaults (research/funding_carry/notebooks/mean_exit_rule.ipynb);
+# tune on held-out data, not this sample.
+
+name: funding_carry
+version: v1
+source: binance
+
+universe: [btcusdt, ethusdt, bnbusdt, xrpusdt, solusdt]
+
+signal:
+  ewma_halflife: 7          # days; EWMA-mean funding = the smooth state for the band
+  theta_in_apr: 0.08        # enter when EWMA-APR >= 8%
+  theta_keep_apr: 0.02      # keep while EWMA-APR >= 2% (exit below — preemptive, before 0)
+  max_n: null               # null = hold all names in the band (equal weight)
+
+costs:
+  spot_taker: 0.0010
+  perp_taker: 0.0005
+  spot_maker: 0.0010
+  perp_maker: 0.0002
+  slippage_per_leg: 0.0002
+  holding_per_day: 0.0
+
+backtest:
+  start: "2021-01-01"
+  end: "2026-05-31"
+  timeframe: "1h"
+  rebalance: "1D"
+  warmup_days: 14           # ~2x EWMA halflife for the mean to settle
+  cost_stress_mult: [1.0, 2.0]

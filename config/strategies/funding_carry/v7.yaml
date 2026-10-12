@@ -1,0 +1,103 @@
+# Funding-carry v7.0 — MULTI-VENUE BREADTH (Binance + Bybit-only names).
+# Strategy = v6.1 (min-age veto + CVaR-blend sizing + drawdown overlay + PM accounting); the ONE
+# change is the universe: assets are venue:pair (same-venue delta-neutral pairs, unified margin per
+# venue, NO cross-venue legs). `breadth` keeps a Bybit pair only when its canonical base coin is
+# absent on Binance (config order = priority), so no coin is ever double-listed.
+# Research (v7_cross_venue/cross_venue.ipynb, frozen v6.1 knobs, joint 2021-07..2026-05):
+#   - venue selection is a NULL (spread half-life ~0.7d, lives in veto-dropped names; switching
+#     doubles turnover and halves 2x-cost Sharpe) -> `breadth`, never best-venue.
+#   - breadth SHIPS: 113 Bybit-only coins carry the same grade -> OOS 2x-cost Sharpe 5.36 -> 6.05,
+#     no maxDD/turnover regression. Bybit-fee delta <= 0.05 Sharpe -> shared cost table (per-venue
+#     cost overrides deliberately not built).
+#   uv run python -m src.strategies.funding_carry.v4.backtest --config strategies/funding_carry/v7.yaml
+
+name: funding_carry
+version: v7.0
+
+sources: [binance, bybit]
+universe:
+  binance: all
+  bybit: breadth
+
+signal:
+  ewma_halflife: 7
+  theta_in_apr: 0.08
+  theta_keep_apr: 0.02
+
+selection:
+  k_in: null
+  k_keep: null
+
+features:
+  - {name: funding_vol, window: 30}
+  - {name: neg_freq,    window: 30}
+  - {name: basis,       window: 30}
+  - {name: basis_vol,   window: 30}
+  - {name: age}
+  - {name: cvar,        window: 60}
+
+veto:
+  - {feature: funding_vol, direction: max, cap: 0.75}
+  - {feature: neg_freq,    direction: max, cap: 0.40}
+  - {feature: basis,       direction: max, cap: 0.01}
+  - {feature: age,         direction: min, cap: 15}
+
+sizing:
+  scheme: blend
+  vol_feature: basis_vol
+  cvar_feature: cvar
+  cvar_clip: 0.90
+  band: 0.5
+
+overlay:
+  qexit: 0.15
+  qreenter: 0.50
+  lookback: 252
+
+margin:
+  # Each venue is its own unified-margin account (Binance Portfolio Margin / Bybit Unified
+  # Trading Account); uniMMR is reported PER VENUE with no idle-cash credit. Without a
+  # `venues:` override block, every venue falls back to the conservative maps below —
+  # pull each venue's real collateral/MMR tables before live deployment.
+  mode: portfolio
+  reserve: 0.0
+  collateral_default: 0.5
+  collateral_overrides:
+    btcusdt: 0.95
+    ethusdt: 0.95
+    bnbusdt: 0.80
+    solusdt: 0.80
+    xrpusdt: 0.80
+    adausdt: 0.80
+    dogeusdt: 0.80
+    ltcusdt: 0.80
+    linkusdt: 0.80
+    dotusdt: 0.80
+  mmr_default: 0.02
+  mmr_overrides:
+    btcusdt: 0.004
+    ethusdt: 0.004
+    bnbusdt: 0.01
+    solusdt: 0.01
+    xrpusdt: 0.01
+    adausdt: 0.01
+    dogeusdt: 0.01
+    ltcusdt: 0.01
+    linkusdt: 0.01
+    dotusdt: 0.01
+
+costs:
+  spot_taker: 0.0010
+  perp_taker: 0.0005
+  spot_maker: 0.0010
+  perp_maker: 0.0002
+  slippage_per_leg: 0.0002
+  holding_per_day: 0.0
+
+backtest:
+  start: "2021-01-01"
+  end: "2026-05-31"
+  timeframe: "1h"
+  rebalance: "1D"
+  warmup_days: 30
+  cost_stress_mult: [1.0, 2.0]

@@ -1,0 +1,99 @@
+# CME futures fetcher config (ARCHITECTURE §3). Source via Databento (GLBX.MDP3).
+# Credentials: only the env-var NAME is referenced (never the key itself).
+
+vendor: databento
+dataset: "GLBX.MDP3"
+api_key_env: "DATABENTO_API_KEY"
+
+# Databento continuous roll rule for the vendor-continuous bars/live path (.{roll}.N):
+#   c = calendar (nearest-to-expiry front month), v = volume (actively-traded front month).
+# Default is calendar; override per symbol with `roll:` where the calendar-nearest contract is
+# thin (metals/FX front-by-calendar is often illiquid vs the volume front — e.g. gold's active
+# month is not the nearest), which makes both history sparse and live trade-starved.
+continuous_roll: c
+
+max_workers: 4            # bounded-parallel backfill (memory ~ max_workers x one-chunk)
+
+# Databento schema + storage (§2.2) + fetch_chunk per data_type/timeframe.
+# `schema`, `storage`, `fetch_chunk` may be a scalar or a per-timeframe map (mirroring the
+# `storage: big/small` precedent). `fetch_chunk` sizes the Databento request span to data
+# density so a backfill issues few latency-bound requests instead of one per calendar day:
+#   all   -> whole range in one request   (sparse: <=1h bars)
+#   year  -> one request per calendar year (1m bars)
+#   month -> one request per calendar month (1s bars)
+#   day   -> one request per day           (trades / tick data — a day can be GBs)
+# Databento bills by data volume, not request count, so coarser spans cost the same.
+# (CME futures always write contract=/date= partitions regardless of `storage`.)
+# Memory: peak ~= max_workers x one span's DataFrame. A year of 1m across a parent's active
+# contracts is order ~hundreds of MB; keep 1s/ticks per month/day and tune max_workers so
+# (max_workers x span) fits the host. Drop 1m to `month` if memory-constrained.
+data_types:
+  bars:
+    timeframes: ["1d", "1h", "1m"]
+    schema:      { "1d": ohlcv-1d, "1h": ohlcv-1h, "1m": ohlcv-1m }
+    storage:     { "1d": big, "1h": big, "1m": big }
+    fetch_chunk: { "1d": all, "1h": all, "1m": year }
+  trades:
+    schema: trades
+    storage: big
+    fetch_chunk: day
+  contracts:
+    schema: definition       # instrument definitions -> contracts table
+    storage: small           # one file per symbol
+
+# Family symbol -> Databento parent symbol (stype_in="parent"). Keys mirror
+# config/universe/cme.yaml; the parent is the CME Globex root + ".FUT".
+symbols:
+  # equity index
+  es: { parent: "ES.FUT" }
+  nq: { parent: "NQ.FUT" }
+  ym: { parent: "YM.FUT" }
+  rty: { parent: "RTY.FUT" }
+  # fx
+  6e: { parent: "6E.FUT" }
+  6j: { parent: "6J.FUT" }
+  6b: { parent: "6B.FUT" }
+  6a: { parent: "6A.FUT", roll: v }  # calendar front thin -> volume roll
+  6c: { parent: "6C.FUT" }
+  6s: { parent: "6S.FUT" }
+  # rates
+  zt: { parent: "ZT.FUT" }
+  zf: { parent: "ZF.FUT" }
+  zn: { parent: "ZN.FUT" }
+  tn: { parent: "TN.FUT" }
+  zb: { parent: "ZB.FUT" }
+  ub: { parent: "UB.FUT" }
+  zq: { parent: "ZQ.FUT" }
+  sr3: { parent: "SR3.FUT" }
+  # energy
+  cl: { parent: "CL.FUT" }
+  ng: { parent: "NG.FUT" }
+  rb: { parent: "RB.FUT" }
+  ho: { parent: "HO.FUT" }
+  # metals  (calendar front is thin -> volume roll)
+  gc: { parent: "GC.FUT", roll: v }
+  si: { parent: "SI.FUT", roll: v }
+  hg: { parent: "HG.FUT" }
+  pl: { parent: "PL.FUT" }
+  # agriculture
+  zc: { parent: "ZC.FUT" }
+  zs: { parent: "ZS.FUT" }
+  zw: { parent: "ZW.FUT" }
+  zl: { parent: "ZL.FUT" }
+  zm: { parent: "ZM.FUT" }
+
+backfill:
+  start: "2024-01-01"
+  # default set for a bare run; override per invocation with --symbols.
+  symbols: [es, nq, ym, rty, 6e, 6j, 6b, 6a, 6c, 6s,
+            zt, zf, zn, tn, zb, ub, zq, sr3,
+            cl, ng, rb, ho, gc, si, hg, pl,
+            zc, zs, zw, zl, zm]
+
+# Live streaming (ARCHITECTURE §6.2) via Databento Live. Needs a live entitlement.
+# Publishes per-contract channels live:cme:{contract}:{data_type}; the aggregator
+# derives bars per contract. trades -> "trades" schema, l1 -> "mbp-1".
+streaming:
+  data_types: [trades, l1]
+  symbols: ["es"]            # families to stream (parents resolved from `symbols` above)
+  bar_timeframes: [1m]

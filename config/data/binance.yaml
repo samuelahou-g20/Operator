@@ -1,0 +1,75 @@
+# Binance fetcher/streamer config (ARCHITECTURE §3).
+# No credentials needed for the public data.binance.vision dumps.
+#
+# A coin trades on Binance as BOTH a USD-M perpetual and a spot market. Each is a
+# separate `market` block under `markets:` keyed by its asset_type — they differ in
+# dump host (futures/um vs spot), REST host (fapi vs api), and which data_types
+# exist (only perps have funding_rate / open_interest). The fetcher writes each
+# market under its own asset_type partition: data/{stage}/{asset_type}/binance/...
+#
+# `storage` is the big-vs-small decision per (data_type, timeframe) (§2.2):
+#   big   -> parquet, hive-partitioned by date=  (large: 1m bars, trades)
+#   small -> single parquet file per symbol       (1h/1d bars, funding, OI)
+
+# Bounded-parallel backfill knobs (memory ~= max_workers x one-chunk footprint).
+max_workers: 8
+throttle_per_sec: 20            # polite cap on requests/sec to data.binance.vision
+
+markets:
+  perps:                                                       # USD-M perpetuals
+    asset_type: perps
+    base_url: "https://data.binance.vision/data/futures/um"    # bulk historical dumps
+    rest_url: "https://fapi.binance.com"                       # daily incremental REST
+    data_types:
+      bars:
+        dump: klines
+        timeframes: ["1h", "1m", "1d"]
+        storage:
+          "1h": small             # one file per symbol (v0 backtest granularity)
+          "1m": big               # date-partitioned (execution-precision; fetch on demand)
+          "1d": small
+      trades:
+        dump: trades
+        storage: big
+      funding_rate:
+        dump: fundingRate         # monthly dumps only
+        storage: small
+      open_interest:
+        dump: metrics             # daily metrics dumps carry open interest
+        storage: small
+
+  spot:                                                        # spot market (the long leg)
+    asset_type: spot
+    base_url: "https://data.binance.vision/data/spot"
+    rest_url: "https://api.binance.com"
+    data_types:
+      bars:
+        dump: klines
+        timeframes: ["1h"]
+        storage:
+          "1h": small
+
+backfill:
+  start: "2021-01-01"             # default range start (CLI can override)
+  symbols: ["btcusdt", "ethusdt", "bnbusdt", "xrpusdt", "solusdt"]
+
+# Live streaming (ARCHITECTURE §6.2). Redis connection comes from env
+# (REDIS_HOST/REDIS_PORT/REDIS_DB), never config — see src/data/streaming.
+# Perps-only for now (the live leg routed through the OMS).
+streaming:
+  ws_url: "wss://fstream.binance.com/stream"
+  data_types: [trades, l1]    # raw streams the streamer publishes (trades via @trade)
+  bar_timeframes: [1m]        # bars the aggregator derives from trades
+  # User-data stream (fills) -> live:binance:user:fills, consumed by the OMS.
+  user_ws_url: "wss://fstream.binance.com/ws"
+  user_ws_url_testnet: "wss://stream.binancefuture.com/ws"
+  # funding_rate (markPrice) is supported by the streamer but omitted here — it is
+  # slow-moving and better polled via REST than streamed.
+
+# Live execution (ARCHITECTURE §9). Only env-var NAMES here; values live in .env.
+# Adapter routes to the USD-M futures testnet when testnet=True.
+execution:
+  api_key_env: BINANCE_API_KEY
+  api_secret_env: BINANCE_API_SECRET
+  testnet_api_key_env: BINANCE_TESTNET_API_KEY
+  testnet_api_secret_env: BINANCE_TESTNET_API_SECRET

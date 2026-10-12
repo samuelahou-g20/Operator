@@ -1,0 +1,1532 @@
+# Token -> venues x quote pairs, reference market and CoinRoutes client code for the ZP quoting
+# review. Imported 2026-09-10 from the MM2 analytics repo's config.yaml (owner-curated there too).
+# exchanges: {pair: [EXCHANGE, ...]}; md_pair/md_exchange = the ccxt reference market used for
+# markouts, period OHLC and P&L marking. Add a token here before asking the Operator for its ZP.
+ICP:
+  deployment_names:
+  - ICP
+  client: C08-ICP
+  md_pair: ICP-USDT
+  md_exchange: binance
+  exchanges:
+    ICP-USD:
+    - BITSTAMP
+    - KRAKEN
+    - COINBASE
+    ICP-EUR:
+    - BITSTAMP
+    - BITVAVO
+    - BINANCE
+    - LCX
+    ICP-USDT:
+    - OKX
+    - BYBIT
+    - BINANCE
+    - BITGET
+    - GATEIO
+    - KUCOIN
+    - MEXC
+    ICP-USDC:
+    - BYBIT
+    - BINANCE
+    ICP-BTC:
+    - COINBASE
+    ICP-GBP:
+    - COINBASE
+    ICP-FDUSD:
+    - BINANCE
+NEAR:
+  deployment_names:
+  - NEAR
+  client: C75-NEAR
+  md_pair: NEAR-USDT
+  md_exchange: binance
+  exchanges:
+    NEAR-EUR:
+    - LCX
+    - BITGET
+    NEAR-USD:
+    - BITFINEX
+    - KRAKEN
+    - BITSTAMP
+    - COINBASE
+    NEAR-USDT:
+    - OKX
+    - BYBIT
+    - BINANCE
+    - BITGET
+    - GATEIO
+    - KUCOIN
+FET:
+  deployment_names:
+  - FET
+  client: C52-FET
+  md_pair: FET-USDT
+  md_exchange: binance
+  exchanges:
+    FET-USDT:
+    - OKX
+    - BYBIT
+    - BITGET
+    - GATEIO
+    - KUCOIN
+    - MEXC
+    - BINANCE
+    FET-USD:
+    - COINBASE
+OXT:
+  g20_name: orch
+  deployment_names:
+  - ORCH
+  md_pair: OXT-USDT
+  md_exchange: binance
+  exchanges:
+    OXT-USDT:
+    - BINANCE
+    - GATEIO
+    - KUCOIN
+    OXT-BTC:
+    - BINANCE
+    OXT-USD:
+    - COINBASE
+    - KRAKEN
+IOST:
+  deployment_names:
+  - IOST
+  md_pair: IOST-USDT
+  md_exchange: binance
+  exchanges:
+    IOST-USDT:
+    - OKX
+    - BINANCE
+    - BITGET
+    - GATEIO
+    - KUCOIN
+    - MEXC
+LINEA:
+  deployment_names:
+  - LINEA
+  md_pair: LINEA-USDT
+  md_exchange: binance
+  exchanges:
+    LINEA-EUR:
+    - BITVAVO
+    LINEA-USD:
+    - KRAKEN
+    - COINBASE
+    - CRYPTO
+    LINEA-USDT:
+    - OKX
+    - BYBIT
+    - BINANCE
+    - BITGET
+    - GATEIO
+    - KUCOIN
+    - HUOBI
+    - MEXC
+    LINEA-FDUSD:
+    - BINANCE
+    LINEA-USDC:
+    - BINANCE
+    LINEA-BNB:
+    - BINANCE
+ZEN:
+  deployment_names:
+  - ZEN
+  md_pair: ZEN-USDT
+  md_exchange: binance
+  exchanges:
+    ZEN-EUR:
+    - BITVAVO
+    ZEN-USDT:
+    - OKX
+    - BYBIT
+    - BINANCE
+    - BITGET
+    - KUCOIN
+    ZEN-USDC:
+    - MEXC
+    - BINANCE
+    ZEN-USD:
+    - COINBASE
+MINA:
+  deployment_names:
+  - MINA
+  md_pair: MINA-USDT
+  md_exchange: binance
+  exchanges:
+    MINA-USDT:
+    - GATEIO
+    - KUCOIN
+    - OKX
+    - BYBIT
+    - BITGET
+    - BINANCE
+    MINA-USDC:
+    - BITGET
+    - BINANCE
+    MINA-USD:
+    - COINBASE
+CC:
+  g20_name: canton
+  deployment_names:
+  - CANTON
+  client: C371-CC
+  md_pair: CC-USDT
+  md_exchange: gate
+  exchanges:
+    CC-EUR:
+    - BITVAVO
+    - KRAKEN
+    CC-USDC:
+    - KRAKEN
+    - BYBIT
+    CC-USD:
+    - KRAKEN
+    - CRYPTO
+    - HASHKEY
+    CC-USDT:
+    - KRAKEN
+    - OKX
+    - BYBIT
+    - KUCOIN
+    - GATEIO
+    - MEXC
+    - BITGET
+    - HUOBI
+    CCN-USD:
+    - LMAX
+ZKC:
+  deployment_names:
+  - ZKC
+  md_pair: ZKC-USDT
+  md_exchange: binance
+  exchanges:
+    ZKC-EUR:
+    - BITVAVO
+    ZKC-USDT:
+    - BYBIT
+    - BINANCE
+    - BITGET
+    - GATEIO
+    - HUOBI
+    - KUCOIN
+    - MEXC
+    ZKC-USD:
+    - COINBASE
+POL:
+  deployment_names:
+  - POL
+  md_pair: POL-USDT
+  md_exchange: binance
+  exchanges:
+    POL-EUR:
+    - BITSTAMP
+    - BITVAVO
+    - BINANCE
+    POL-USD:
+    - BITSTAMP
+    - KRAKEN
+    - COINBASE
+    POL-USDT:
+    - OKX
+    - BYBIT
+    - BINANCE
+    - BITGET
+    - GATEIO
+    - KUCOIN
+    - BITFINEX
+    POL-ETH:
+    - BINANCE
+    POL-USDC:
+    - BINANCE
+    POL-BNB:
+    - BINANCE
+    POL-BTC:
+    - BINANCE
+    POL-FDUSD:
+    - BINANCE
+    POL-JPY:
+    - BINANCE
+    POL-BRL:
+    - BINANCE
+    POL-IDR:
+    - BINANCE
+TNSR:
+  deployment_names:
+  - TNSR
+  md_pair: TNSR-USDT
+  md_exchange: binance
+  exchanges:
+    TNSR-USDT:
+    - OKX
+    - BYBIT
+    - BINANCE
+    TNSR-USD:
+    - COINBASE
+CSPR:
+  deployment_names:
+  - CSPR
+  md_pair: CSPR-USDT
+  md_exchange: gate
+  exchanges:
+    CSPR-EUR:
+    - BITSTAMP
+    - BITVAVO
+    CSPR-USD:
+    - BITSTAMP
+    CSPR-USDT:
+    - OKX
+    - BYBIT
+    - GATEIO
+    - KUCOIN
+ACX:
+  deployment_names:
+  - ACX
+  md_pair: ACX-USDT
+  md_exchange: binance
+  exchanges:
+    ACX-USDC:
+    - BINANCE
+    ACX-USDT:
+    - BINANCE
+    - BITGET
+    - GATEIO
+    - KUCOIN
+    - MEXC
+    ACX-USD:
+    - COINBASE
+SAFE:
+  deployment_names:
+  - SAFE
+  md_pair: SAFE-USDT
+  md_exchange: gate
+  exchanges:
+    SAFE-EUR:
+    - BITVAVO
+    - LCX
+    SAFE-USD:
+    - KRAKEN
+    - COINBASE
+    SAFE-USDT:
+    - OKX
+    - BYBIT
+    - BINANCEALPHA
+    - BITGET
+    - GATEIO
+    - KUCOIN
+    - MEXC
+CELO:
+  deployment_names:
+  - CELO
+  md_pair: CELO-USDT
+  md_exchange: binance
+  exchanges:
+    CELO-USD:
+    - KRAKEN
+    CELO-USDT:
+    - OKX
+    - BYBIT
+    - BINANCE
+    CELO-BTC:
+    - BINANCE
+    CGLD-USD:
+    - COINBASE
+CFX:
+  deployment_names:
+  - CFX
+  md_pair: CFX-USDT
+  md_exchange: binance
+  exchanges:
+    CFX-EUR:
+    - KRAKEN
+    CFX-USD:
+    - KRAKEN
+    - HASHKEY
+    CFX-USDT:
+    - GATEIO
+    - HUOBI
+    - KUCOIN
+    - MEXC
+    - OKX
+    - BINANCE
+    - BITGET
+    CFX-USDC:
+    - BINANCE
+    CFX-BTC:
+    - BINANCE
+VET:
+  deployment_names:
+  - VET
+  md_pair: VET-USDT
+  md_exchange: binance
+  exchanges:
+    VET-EUR:
+    - BITVAVO
+    - KRAKEN
+    VET-USD:
+    - KRAKEN
+    - COINBASE
+    VET-USDT:
+    - GATEIO
+    - BINANCE
+    - KUCOIN
+    - KRAKEN
+    VET-USDC:
+    - KRAKEN
+RARE:
+  deployment_names:
+  - RARE
+  md_pair: RARE-USDT
+  md_exchange: binance
+  exchanges:
+    RARE-USD:
+    - KRAKEN
+    - COINBASE
+    RARE-USDT:
+    - BINANCE
+    - BITGET
+    - GATEIO
+AGI:
+  deployment_names:
+  - AGI
+  md_pair: AGI-USDT
+  md_exchange: gate
+  exchanges:
+    AGI-EUR:
+    - BITVAVO
+    AGI-USDT:
+    - BINGX
+    - BYBIT
+    - GATEIO
+    - KUCOIN
+    - MEXC
+BREV:
+  deployment_names:
+  - BREV
+  md_pair: BREV-USDT
+  md_exchange: binance
+  exchanges:
+    BREV-EUR:
+    - KRAKEN
+    - BITVAVO
+    BREV-USD:
+    - KRAKEN
+    - COINBASE
+    BREV-USDT:
+    - OKX
+    - BYBIT
+    - BINANCE
+PORTAL:
+  deployment_names:
+  - PORTAL
+  md_pair: PORTAL-USDT
+  md_exchange: binance
+  exchanges:
+    PORTAL-EUR:
+    - KRAKEN
+    PORTAL-USD:
+    - KRAKEN
+    PORTAL-USDT:
+    - BYBIT
+    - BINANCE
+    - BITGET
+    - GATEIO
+    - KUCOIN
+    - MEXC
+AZTEC:
+  deployment_names:
+  - AZTEC
+  md_pair: AZTEC-USDT
+  md_exchange: bybit
+  exchanges:
+    AZTEC-EUR:
+    - BITVAVO
+    AZTEC-USDT:
+    - BINANCE
+    - GATEIO
+    - HUOBI
+    - KUCOIN
+    - MEXC
+DNX:
+  g20_name: dynex
+  deployment_names:
+  - DYNEX
+  md_pair: DNX-USDT
+  md_exchange: gate
+  exchanges:
+    DNX-USDT:
+    - GATEIO
+    - MEXC
+NRN:
+  deployment_names:
+  - NRN
+  md_pair: NRN-USDT
+  md_exchange: gate
+  exchanges:
+    NRN-USDT:
+    - BYBIT
+    - GATEIO
+    - KUCOIN
+    - MEXC
+CXT:
+  deployment_names:
+  - CXT
+  md_pair: CXT-USDT
+  md_exchange: gate
+  exchanges:
+    CXT-EUR:
+    - BITSTAMP
+    - KRAKEN
+    CXT-USD:
+    - KRAKEN
+    - BITSTAMP
+    CXT-USDT:
+    - OKX
+    - GATEIO
+    - KUCOIN
+    - MEXC
+TRUF:
+  deployment_names:
+  - TRUF
+  md_pair: TRUF-USDT
+  md_exchange: gate
+  exchanges:
+    TRUF-USD:
+    - BITSTAMP
+    TRUF-EUR:
+    - BITSTAMP
+    TRUF-USDT:
+    - GATEIO
+    - KUCOIN
+    - MEXC
+ELA:
+  deployment_names:
+  - ELA
+  md_pair: ELA-USDT
+  md_exchange: gate
+  exchanges:
+    ELA-USD:
+    - CRYPTO
+    - COINBASE
+    ELA-USDT:
+    - GATEIO
+    - KUCOIN
+    - MEXC
+FUEL:
+  deployment_names:
+  - FUEL
+  md_pair: FUEL-USDT
+  md_exchange: gate
+  exchanges:
+    FUEL-EUR:
+    - BITVAVO
+    FUEL-USDT:
+    - BYBIT
+    - GATEIO
+    - BITGET
+    - KUCOIN
+NYM:
+  deployment_names:
+  - NYM
+  md_pair: NYM-USDT
+  md_exchange: gate
+  exchanges:
+    NYM-USD:
+    - BITFINEX
+    - KRAKEN
+    NYM-USDT:
+    - BITFINEX
+    - GATEIO
+    - KUCOIN
+    - BYBIT
+    - BITGET
+    - MEXC
+BOBA:
+  deployment_names:
+  - BOBA
+  md_pair: BOBA-USDT
+  md_exchange: gate
+  exchanges:
+    BOBA-USDT:
+    - BYBIT
+    - GATEIO
+    - KUCOIN
+    - MEXC
+    BOBA-USD:
+    - COINBASE
+XCH:
+  deployment_names:
+  - XCH
+  md_pair: XCH-USDT
+  md_exchange: gate
+  exchanges:
+    XCH-USDT:
+    - OKX
+    - GATEIO
+    - KUCOIN
+    - MEXC
+AURORA:
+  deployment_names:
+  - AURORA
+  md_pair: AURORA-USDT
+  md_exchange: gate
+  exchanges:
+    AURORA-USDT:
+    - BYBIT
+    - GATEIO
+    - KUCOIN
+    AURORA-USD:
+    - COINBASE
+UXLINK:
+  deployment_names:
+  - UXLINK
+  md_pair: UXLINK-USDT
+  md_exchange: gate
+  exchanges:
+    UXLINK-USDT:
+    - OKX
+    - BYBIT
+    - BITGET
+    - GATEIO
+    - HASHKEYGLOBAL
+    - HASHKEY
+ALPH:
+  deployment_names:
+  - ALPH
+  md_pair: ALPH-USDT
+  md_exchange: gate
+  exchanges:
+    ALPH-USDT:
+    - BITGET
+    - GATEIO
+    - MEXC
+PARTI:
+  deployment_names:
+  - PARTI
+  md_pair: PARTI-USDT
+  md_exchange: binance
+  exchanges:
+    PARTI-EUR:
+    - BITVAVO
+    PARTI-USDT:
+    - OKX
+    - BINGX
+    - BYBIT
+    - BINANCE
+    - BITGET
+    - GATEIO
+    - HUOBI
+    - KUCOIN
+    - MEXC
+    PARTI-BNB:
+    - BINANCE
+    PARTI-FDUSD:
+    - BINANCE
+    PARTI-USDC:
+    - BINANCE
+    P.PARTI-USDT:
+    - BINANCE
+A47:
+  deployment_names:
+  - A47
+  md_pair: A47-USDT
+  md_exchange: gate
+  exchanges:
+    A47-USDT:
+    - BITGET
+    - GATEIO
+    - KUCOIN
+    - MEXC
+CROSS:
+  deployment_names:
+  - CROSS
+  md_pair: CROSS-USDT
+  md_exchange: gate
+  exchanges:
+    CROSS-USDT:
+    - BITGET
+    - GATEIO
+    - KUCOIN
+    - MEXC
+    - BINANCEALPHA
+    # ONE-USD / ONE-EUR on KRAKEN removed 2026-09-11: ONE on Kraken is Harmony (~$0.115), a
+    # different asset, and CROSS is not listed there at all. Left in, ONE-USD's volume went into
+    # CROSS's capture denominator (understating our share) and ONE-EUR — which Kraken does not
+    # list — produced a warning every run. Put them back only if CROSS really quotes under ONE.
+B2:
+  deployment_names:
+  - B2
+  md_pair: B2-USDT
+  md_exchange: gate
+  exchanges:
+    B2-USD:
+    - KRAKEN
+    B2-EUR:
+    - KRAKEN
+    B2-USDT:
+    - BITGET
+    - GATEIO
+    - KUCOIN
+    - MEXC
+DODO:
+  deployment_names:
+  - DODO
+  md_pair: DODO-USDT
+  md_exchange: binance
+  exchanges:
+    DODO-USDT:
+    - BINANCE
+    - GATEIO
+    - KUCOIN
+    DODO-BTC:
+    - BINANCE
+QI:
+  deployment_names:
+  - QI
+  md_pair: QI-USDT
+  md_exchange: binance
+  exchanges:
+    QI-USDT:
+    - BINANCE
+    - KUCOIN
+    QI-USD:
+    - COINBASE
+NEO:
+  deployment_names:
+  - NEO
+  md_pair: NEO-USDT
+  md_exchange: binance
+  exchanges:
+    NEO-EUR:
+    - BITVAVO
+    - KRAKEN
+    NEO-USDT:
+    - OKX
+    - BINANCE
+    - BITGET
+    - GATEIO
+    - KUCOIN
+    - BITFINEX
+    NEO-BTC:
+    - BINANCE
+    NEO-USD:
+    - KRAKEN
+GAS:
+  deployment_names:
+  - GAS
+  md_pair: GAS-USDT
+  md_exchange: binance
+  exchanges:
+    GAS-EUR:
+    - BITVAVO
+    - KRAKEN
+    GAS-USDT:
+    - OKX
+    - BINANCE
+    - BITGET
+    - GATEIO
+    - KUCOIN
+    GAS-BTC:
+    - BINANCE
+    GAS-USD:
+    - KRAKEN
+ASP:
+  deployment_names:
+  - ASP
+  md_pair: ASP-USDT
+  md_exchange: gate
+  exchanges:
+    ASP-USDT:
+    - OKX
+    - GATEIO
+    - KUCOIN
+    - MEXC
+RHEA:
+  deployment_names:
+  - RHEA
+  md_pair: RHEA-USDT
+  md_exchange: gate
+  exchanges:
+    RHEA-USD:
+    - KRAKEN
+    RHEA-EUR:
+    - KRAKEN
+    RHEA-USDT:
+    - LBANK
+    - BINGX
+    - BITGET
+    - GATEIO
+    - MEXC
+    - BINANCEUS
+SD:
+  deployment_names:
+  - SD
+  md_pair: SD-USDT
+  md_exchange: gate
+  exchanges:
+    SD-USDT:
+    - OKX
+    - BYBIT
+    - BITGET
+    - GATEIO
+    - KUCOIN
+    SD-USD:
+    - COINBASE
+PUBLIC:
+  deployment_names:
+  - PUBLIC
+  md_pair: PUBLIC-USDT
+  md_exchange: gate
+  exchanges:
+    PUBLIC-USDT:
+    - BINGX
+    - BITGET
+    - GATEIO
+    - KUCOIN
+    - MEXC
+HNT:
+  deployment_names:
+  - HNT
+  md_pair: HNT-USDT
+  md_exchange: gate
+  exchanges:
+    HNT-USDT:
+    - BYBIT
+    - BITGET
+    - GATEIO
+    - KUCOIN
+    - MEXC
+    HNT-USD:
+    - COINBASE
+VFY:
+  deployment_names:
+  - VFY
+  md_pair: VFY-USDT
+  md_exchange: gate
+  exchanges:
+    VFY-USD:
+    - KRAKEN
+    VFY-EUR:
+    - KRAKEN
+    VFY-USDT:
+    - BITGET
+    - GATEIO
+    - KUCOIN
+    - MEXC
+LAVA:
+  deployment_names:
+  - LAVA
+  md_pair: LAVA-USDT
+  md_exchange: gate
+  exchanges:
+    LAVA-USD:
+    - KRAKEN
+    LAVA-EUR:
+    - KRAKEN
+    LAVA-USDT:
+    - BYBIT
+    - BINANCEALPHA
+    - GATEIO
+ALMANAK:
+  deployment_names:
+  - ALMANAK
+  md_pair: ALMANAK-USDT
+  md_exchange: gate
+  exchanges:
+    ALMANAK-USD:
+    - KRAKEN
+    ALMANAK-USDT:
+    - BYBIT
+    - BITGET
+    - GATEIO
+    - MEXC
+MAGMA:
+  deployment_names:
+  - MAGMA
+  md_pair: MAGMA-USDT
+  md_exchange: gate
+  exchanges:
+    MAGMA-USDT:
+    - BITGET
+    - GATEIO
+    P.MAGMA-USDT:
+    - BYBIT
+    - BINANCE
+VTHO:
+  deployment_names:
+  - VTHO
+  md_pair: MAGMA-USDT
+  md_exchange: binance
+  exchanges:
+    VTHO-EUR:
+    - KRAKEN
+    VTHO-USD:
+    - KRAKEN
+KIN:
+  deployment_names:
+  - KIN
+  md_pair: KIN-USDT
+  md_exchange: kucoin
+  exchanges:
+    KIN-USDT:
+    - BINANCEALPHA
+    - KUCOIN
+BGB:
+  deployment_names:
+  - BGB
+  md_pair: BGB-USDT
+  md_exchange: bitget
+  exchanges:
+    BGB-EUR:
+    - KRAKEN
+    BGB-USD:
+    - KRAKEN
+    BGB-USDT:
+    - BITGET
+PNG:
+  deployment_names:
+  - PNG
+  md_pair: PNG-USD
+  md_exchange: coinbase
+  exchanges:
+    PNG-USDT:
+    - GATEIO
+    - MEXC
+    PNG-USD:
+    - COINBASE
+NOCK:
+  deployment_names:
+  - NOCK
+  md_pair: NOCK-USDT
+  md_exchange: mexc
+  exchanges:
+    NOCK-USDT:
+    - MEXC
+    NOCK-USD:
+    - KRAKEN
+BTW:
+  deployment_names:
+  - BTW
+  md_pair: BTW-USDT
+  md_exchange: bitget
+  exchanges:
+    BTW-USDT:
+    - BINANCEALPHA
+    - BITGET
+    P.BTW-USDT:
+    - BYBIT
+    - BINANCE
+QUID:
+  deployment_names:
+  - QUID
+  md_pair: QUID-USDT
+  md_exchange: bitget
+  exchanges:
+    QUID-USDT:
+    - OKX
+    - BITGET
+    QUID-USDC:
+    - BINANCEALPHA
+    QUID-USD:
+    - KRAKEN
+    QUID-EUR:
+    - BITVAVO
+    - KRAKEN
+IDOS:
+  deployment_names:
+  - IDOS
+  md_pair: IDOS-USDT
+  md_exchange: gate
+  exchanges:
+    IDOS-EUR:
+    - KRAKEN
+    IDOS-USD:
+    - KRAKEN
+    IDOS-USDT:
+    - GATEIO
+    - KUCOIN
+    - MEXC
+P.NEAR:
+  deployment_names:
+  - P.NEAR
+  client: N003-PERP
+  md_pair: NEAR-USDT:USDT
+  md_exchange: binanceusdm
+  exchanges:
+    P.NEAR-USDT:
+    - BINANCE
+P.ICP:
+  deployment_names:
+  - P.ICP
+  client: N003-PERP
+  md_pair: ICP-USDT:USDT
+  md_exchange: binanceusdm
+  exchanges:
+    P.ICP-USDT:
+    - BINANCE
+P.FET:
+  deployment_names:
+  - P.FET
+  client: N003-PERP
+  md_pair: FET-USDT:USDT
+  md_exchange: binanceusdm
+  exchanges:
+    P.FET-USDT:
+    - BINANCE
+P.CC:
+  deployment_names:
+  - P.CC
+  client: N003-PERP
+  md_pair: CC-USDT:USDT
+  md_exchange: binanceusdm
+  exchanges:
+    P.CC-USDT:
+    - BINANCE
+P.HYPE:
+  deployment_names:
+  - P.HYPE
+  client: N003-PERP
+  md_pair: HYPE-USDT:USDT
+  md_exchange: binanceusdm
+  exchanges:
+    P.HYPE-USDT:
+    - BINANCE
+P.ZEC:
+  deployment_names:
+  - P.ZEC
+  client: N003-PERP
+  md_pair: ZEC-USDT:USDT
+  md_exchange: binanceusdm
+  exchanges:
+    P.ZEC-USDT:
+    - BINANCE
+P.WLD:
+  deployment_names:
+  - P.WLD
+  client: N003-PERP
+  md_pair: WLD-USDT:USDT
+  md_exchange: binanceusdm
+  exchanges:
+    P.WLD-USDT:
+    - BINANCE
+P.BNB:
+  deployment_names:
+  - P.BNB
+  client: N003-PERP
+  md_pair: BNB-USDT:USDT
+  md_exchange: binanceusdm
+  exchanges:
+    P.BNB-USDT:
+    - BINANCE
+P.AVAX:
+  deployment_names:
+  - P.AVAX
+  client: N003-PERP
+  md_pair: AVAX-USDT:USDT
+  md_exchange: binanceusdm
+  exchanges:
+    P.AVAX-USDT:
+    - BINANCE
+P.SUI:
+  deployment_names:
+  - P.SUI
+  client: N003-PERP
+  md_pair: SUI-USDT:USDT
+  md_exchange: binanceusdm
+  exchanges:
+    P.SUI-USDT:
+    - BINANCE
+P.FIL:
+  deployment_names:
+  - P.FIL
+  client: N003-PERP
+  md_pair: FIL-USDT:USDT
+  md_exchange: binanceusdm
+  exchanges:
+    P.FIL-USDT:
+    - BINANCE
+P.DOT:
+  deployment_names:
+  - P.DOT
+  client: N003-PERP
+  md_pair: DOT-USDT:USDT
+  md_exchange: binanceusdm
+  exchanges:
+    P.DOT-USDT:
+    - BINANCE
+P.PUMP:
+  deployment_names:
+  - P.PUMP
+  client: N003-PERP
+  md_pair: PUMP-USDT:USDT
+  md_exchange: binanceusdm
+  exchanges:
+    P.PUMP-USDT:
+    - BINANCE
+P.ADA:
+  deployment_names:
+  - P.ADA
+  client: N003-PERP
+  md_pair: ADA-USDT:USDT
+  md_exchange: binanceusdm
+  exchanges:
+    P.ADA-USDT:
+    - BINANCE
+    - BYBIT
+P.PAXG:
+  deployment_names:
+  - P.PAXG
+  md_pair: PAXG-USDT:USDT
+  md_exchange: binanceusdm
+  exchanges:
+    P.PAXG-USDT:
+    - BINANCE
+    - BYBIT
+P.APR:
+  deployment_names:
+  - P.APR
+  md_pair: APR-USDT:USDT
+  md_exchange: okx
+  exchanges:
+    P.APR-USDT:
+    - okx
+P.UNITAS:
+  deployment_names:
+  - P.UNITAS
+  md_pair: UP-USDT:USDT
+  md_exchange: okx
+  exchanges:
+    P.UNITAS-USDT:
+    - okx
+    P.UNITAS-USD:
+    - KRAKEN
+APR:
+  deployment_names:
+  - APR
+  md_pair: APR-USDT
+  md_exchange: bitget
+  exchanges:
+    APR-USD:
+    - KRAKEN
+    - COINBASE
+    APR-USDT:
+    - GATEIO
+    - KUCOIN
+    P.APR-USDT:
+    - OKX
+CGPT:
+  deployment_names:
+  - CGPT
+  md_pair: CGPT-USDT
+  md_exchange: binance
+  exchanges:
+    CGPT-USDT:
+    - BYBIT
+    - BINANCE
+    - BITGET
+    - GATEIO
+    - HUOBI
+    - KUCOIN
+    - MEXC
+GWEI:
+  deployment_names:
+  - GWEI
+  md_pair: GWEI-USDT
+  md_exchange: bitget
+  exchanges:
+    GWEI-USD:
+    - KRAKEN
+    - COINBASE
+    GWEI-EUR:
+    - BITVAVO
+    GWEI-USDT:
+    - BINANCEALPHA
+BSB:
+  deployment_names:
+  - BSB
+  md_pair: BSB-USDT
+  md_exchange: bybit
+  exchanges:
+    BSB-USDT:
+    - BYBIT
+    - BITGET
+    - BINANCEALPHA
+UNITAS:
+  deployment_names:
+  - UNITAS
+  md_pair: UNITAS-USD
+  md_exchange: kraken
+  exchanges:
+    UNITAS-USD:
+    - KRAKEN
+    UNITAS-USDT:
+    - KRAKEN
+    UP-USDT:
+    - BINANCEALPHA
+UFD:
+  deployment_names:
+  - UFD
+  md_pair: UFD-USD
+  md_exchange: kraken
+  exchanges:
+    UFD-USD:
+    - KRAKEN
+    UFD-USDT:
+    - BITGET
+    - MEXC
+BSV:
+  deployment_names:
+  - BSV
+  md_pair: BSV-USDT
+  md_exchange: bitget
+  exchanges:
+    BSV-EUR:
+    - LCX
+    BCHSV-USDT:
+    - KUCOIN
+    BSV-USDT:
+    - BITGET
+    - COINSTORE
+    - GATEIO
+    - MEXC
+BMB:
+  deployment_names:
+  - BMB
+  md_pair: BMB-USD
+  md_exchange: kraken
+  exchanges:
+    BMB-USD:
+    - KRAKEN
+    BMB-USDT:
+    - GATEIO
+    - KUCOIN
+AEDZ:
+  deployment_names:
+  - AEDZ
+  md_pair: AEDZ-USDT
+  md_exchange: bybit
+  exchanges:
+    AEDZ-USDC:
+    - BYBIT
+    AEDZ-USDT:
+    - BYBIT
+TGT:
+  deployment_names:
+  - TGT
+  md_pair: TGT-USDT
+  md_exchange: gate
+  exchanges:
+    TGT-USDT:
+    - GATEIO
+    - KUCOIN
+    - MEXC
+OPEN:
+  deployment_names:
+  - OPEN
+  md_pair: OPEN-USDT
+  md_exchange: bitget
+  exchanges:
+    OPEN-EUR:
+    - BITVAVO
+    OPEN-USDT:
+    - BITGET
+ADI:
+  deployment_names:
+  - ADI
+  md_pair: ADI-USDT
+  md_exchange: kucoin
+  exchanges:
+    ADI-USD:
+    - CRYPTO
+    ADI-USDT:
+    - KUCOIN
+PIPE:
+  deployment_names:
+  - PIPE
+  md_pair: PIPE-USDT
+  md_exchange: gate
+  exchanges:
+    PIPE-USD:
+    - KRAKEN
+    PIPE-USDT:
+    - GATEIO
+    - KUCOIN
+    - MEXC
+SOIL:
+  deployment_names:
+  - SOIL
+  md_pair: SOIL-USDT
+  md_exchange: gate
+  exchanges:
+    SOIL-USDT:
+    - GATEIO
+    - MEXC
+ALEX:
+  deployment_names:
+  - ALEX
+  md_pair: ALEX-USDT
+  md_exchange: gate
+  exchanges:
+    ALEX-USDT:
+    - BITGET
+    - GATEIO
+    - KUCOIN
+    - MEXC
+KET:
+  deployment_names:
+  - KET
+  md_pair: KET-USD
+  md_exchange: kraken
+  exchanges:
+    KET-USD:
+    - KRAKEN
+    KET-EUR:
+    - KRAKEN
+ZBU:
+  deployment_names:
+  - ZBU
+  md_pair: ZBU-USDT
+  md_exchange: gate
+  exchanges:
+    ZBU-USDT:
+    - BITGET
+    - GATEIO
+    - MEXC
+GAIA:
+  deployment_names:
+  - GAIA
+  md_pair: GAIA-USDT
+  md_exchange: bitget
+  exchanges:
+    GAIA-USD:
+    - KRAKEN
+    GAIA-USDT:
+    - BITGET
+    - KUCOIN
+GAIB:
+  deployment_names:
+  - GAIB
+  md_pair: GAIB-USDT
+  md_exchange: bybit
+  exchanges:
+    GAIB-USD:
+    - KRAKEN
+    GAIB-USDT:
+    - BYBIT
+    - BITGET
+ART:
+  deployment_names:
+  - ART
+  md_pair: ART-USDT
+  md_exchange: bybit
+  exchanges:
+    ART-USDT:
+    - BYBIT
+    - BITGET
+    - GATEIO
+    - MEXC
+KERNEL:
+  deployment_names:
+  - KERNEL
+  md_pair: KERNEL-USDT
+  md_exchange: binance
+  exchanges:
+    KERNEL-EUR:
+    - BITVAVO
+    KERNEL-USD:
+    - KRAKEN
+    KERNEL-USDT:
+    - BINANCE
+    - BITGET
+    - GATEIO
+    - KUCOIN
+    - MEXC
+TGBP:
+  deployment_names:
+  - TGBP
+  md_pair: TGBP-USDC
+  md_exchange: coinbase
+  exchanges:
+    TGBP-GBP:
+    - KRAKEN
+    TGBP-USD:
+    - KRAKEN
+    TGBP-USDC:
+    - COINBASE
+SPARKLET:
+  deployment_names:
+  - SPARKLET
+  md_pair: SPARKLET-USDT
+  md_exchange: gate
+  exchanges:
+    SPARKLET-USDT:
+    - GATEIO
+    - HUOBI
+    - MEXC
+ALEOPERP:
+  deployment_names:
+  - ALEOPERP
+  md_pair: P.ALEO-USD
+  md_exchange: kraken
+  exchanges:
+    P.ALEO-USD:
+    - KRAKEN
+GENIUS:
+  deployment_names:
+  - GENIUS
+  md_pair: GENIUS-USDT
+  md_exchange: binance
+  exchanges:
+    GENIUS-USDT:
+    - BINANCEALPHA
+    - BITGET
+    - GATEIO
+    - MEXC
+    - KUCOIN
+    - HUOBI
+    GENIUS-EUR:
+    - KRAKEN
+    GENIUS-USD:
+    - KRAKEN
+CHECK:
+  deployment_names:
+  - CHECK
+  md_pair: CHECK-USDT
+  md_exchange: gate
+  exchanges:
+    CHECK-USD:
+    - KRAKEN
+    - COINBASE
+    CHECK-USDT:
+    - GATEIO
+    - MEXC
+    CHECK-USDC:
+    - BINANCEALPHA
+AI:
+  g20_name: AI
+  deployment_names:
+  - AI
+  md_pair: AIGENSYN-USDT
+  md_exchange: binance
+  exchanges:
+    AI-USDT:
+    - BITGET
+    - KUCOIN
+    - OKX
+    - MEXC
+    AIGENSYN-USDT:
+    - BINANCE
+    AI-USD:
+    - KRAKEN
+    AI-EUR:
+    - BITVAVO
+BILL:
+  g20_name: BILL
+  deployment_names:
+  - BILL
+  md_pair: BILL-USDT
+  md_exchange: bybit
+  exchanges:
+    BILL-USD:
+    - KRAKEN
+    - COINBASE
+    BILL-USDT:
+    - OKX
+    - BYBIT
+    - BITGET
+    - KUCOIN
+    - HUOBI
+    - MEXC
+    - BINANCEALPHA
+    P.BILL-USDT:
+    - BYBIT
+    - BINANCE
+SLX:
+  g20_name: SLX
+  deployment_names:
+  - SLX
+  md_pair: SLX-USDT
+  md_exchange: gate
+  exchanges:
+    SLX-EUR:
+    - BITVAVO
+    SLX-USD:
+    - KRAKEN
+    - COINBASE
+    SLX-USDT:
+    - BYBIT
+    - BINANCEALPHA
+    - BITGET
+    - GATEIO
+    - MEXC
+    - OKX
+COMP:
+  g20_name: COMP
+  deployment_names:
+  - COMP
+  md_pair: COMP-USDT
+  md_exchange: binance
+  exchanges:
+    COMP-EUR:
+    - BITVAVO
+    COMP-USDT:
+    - OKX
+    - BYBIT
+    - BINANCE
+    - BITGET
+    - GATEIO
+    - KUCOIN
+    COMP-USD:
+    - COINBASE
+YB:
+  g20_name: YB
+  deployment_names:
+  - YB
+  md_pair: YB-USDT
+  md_exchange: binance
+  exchanges:
+    YB-USDT:
+    - OKX
+    - BYBIT
+    - BINANCE
+    - GATEIO
+    - MEXC
+    YB-USD:
+    - COINBASE
+SKL:
+  g20_name: SKL
+  deployment_names:
+  - SKL
+  md_pair: SKL-USDT
+  md_exchange: binance
+  exchanges:
+    SKL-USDT:
+    - BINANCE
+    - OKX
+    - MEXC
+    - GATEIO
+    - BITGET
+    - CRYPTO
+    SKL-USD:
+    - COINBASE
+LAPTOP:
+  g20_name: LAPTOP
+  deployment_names:
+  - LAPTOP
+  md_pair: LAPTOP-USDT
+  md_exchange: kucoin
+  exchanges:
+    LAPTOP-USDT:
+    - BINANCE
+    - OKX
+    - BYBIT
+    - GATEIO
+    - BITGET
+    - KUCOIN
+    LAPTOP-USD:
+    - COINBASE
+    - KRAKEN
+    LAPTOP-EUR:
+    - BITVAVO
+    - KRAKEN

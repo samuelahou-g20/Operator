@@ -1,0 +1,31 @@
+[Unit]
+Description=Desk Telegram bot: %i
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+# EDIT ME before enabling: absolute path to this repo's checkout on this
+# machine (the repo can be cloned anywhere, so this can't be derived).
+WorkingDirectory=/path/to/operator
+
+# User systemd units start with a minimal PATH that usually excludes
+# ~/.local/bin, where uv lives (same fix scripts/daily_task.sh applies for
+# cron). %h is this user's home directory.
+Environment=PATH=%h/.local/bin:/usr/bin:/bin
+ExecStart=%h/.local/bin/uv run python -m scripts.%i_bot
+
+# on-failure, not always: trade_bot's flock conflict and Telegram's 409 on a
+# duplicate long-poller both exit 0 (clean exit, not a crash) — `always`
+# would restart-loop against the lock / hammer Telegram with duplicate
+# pollers instead of leaving the unit stopped. See docs/bots.md.
+Restart=on-failure
+RestartSec=10
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

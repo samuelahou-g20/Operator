@@ -1,0 +1,60 @@
+# Minimal uv project (ARCHITECTURE §14): name, requires-python, dependency list.
+# `version` is required for a valid PEP 621 [project] table; tool.uv.package=false
+# keeps this a virtual (non-installed) project — no build backend, no packaging.
+[project]
+name = "operator"
+version = "0.0.0"
+requires-python = ">=3.12"
+dependencies = [
+    "pandas>=2.2",
+    "pyarrow>=17",
+    "duckdb>=1.0",
+    "pyyaml>=6.0",
+    "redis>=5.0",
+    "websocket-client>=1.9.0",
+    "databento>=0.80.0",
+    "python-binance>=1.0.37",
+    "hyperliquid-python-sdk>=0.24.0",
+    "eth-account>=0.13.7",
+    "numpy>=2.4.6",
+    "scipy>=1.18.0",
+    "statsmodels>=0.14.6",
+    "scikit-learn>=1.9.0",
+    "ruptures>=1.1.10",
+    "hmmlearn>=0.3.3",
+    "matplotlib>=3.11.0",
+    "nbformat>=5.10.4",
+    "nbclient>=0.11.0",
+    "ipykernel>=7.3.0",
+    "textual>=8.2.8",
+    "numba>=0.66.0",
+    "tqdm>=4.68.4",
+    "ccxt>=4.5.65",
+    "jinja2>=3.1.6",
+    "anthropic>=0.117.0",
+    "weasyprint>=69.0",
+    "python-docx>=1.2.0",
+    "plotly>=6.9.0",
+    "gspread>=6.2.1",
+    "sqlalchemy>=2.0.52",
+    "psycopg[binary]>=3.3.4",
+]
+
+[dependency-groups]
+dev = [
+    "fakeredis>=2.36.2",
+    "pytest>=8.0",
+    "ruff>=0.6",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+extend-exclude = ["old_code", "**/notebooks", "*.ipynb", "**/_build_*.py", "research/zp_reference"]  # reference code, generated notebooks + their builders, frozen ZP source snapshot; not source
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

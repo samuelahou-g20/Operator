@@ -1,0 +1,188 @@
+# Per-desk token/strategy rosters + agg_bot sheet wiring. This is the ONLY place these live —
+# a new owner running this for a different desk/token roster edits this file, not scripts/*_bot.py.
+#
+# `strategy` maps token -> exact CoinRoutes strategy NAME (spot gamma book). The create-order API
+# matches by exact NAME (case-sensitive, NOT the slug) — see docs/bots.md's CoinRoutes gotchas.
+# `perp_strategy` is the strategy used for tokens not in `strategy` (perps-only hedge book).
+# `spot_strategy` is the catch-all SPOT book for a desk with no per-token roster (OTC).
+# `agg` is scripts/agg_bot.py's Google Sheet wiring for that desk's Aggregator Dashboard tab.
+# `bots` is the desk's Pluto BotManager roster read by scripts/botstatus_bot.py — exact `name`
+# values as the API returns them, leading `*` (Firm-owned) included. Only listed bots are shown,
+# and a listed bot the API does not return is reported as MISSING rather than dropped, so this is
+# the roster of record: a bot removed here stops being monitored. Some names contain SPACES.
+#
+# Safety-relevant values (PLACE_STATUS, MAX_MULT, DEFAULT_MAX_POST_USD, DEFAULT_QTY, per-desk
+# max_usd) stay hardcoded in scripts/trade_bot.py per the owner — do NOT move them here.
+
+mm3:
+  perp_strategy: mm3-futurestrading-ha-j
+  strategy:
+    DNX: MM-C115-DNX-GAMMA-J
+    # CXT moved to the MM4 desk 2026-09-10 — removed from this roster.
+    # ⚠️ RDS still tags all 16 of its active locations desk=MM3, so its flow keeps
+    # appearing in MM3's flow alerts and `/trade today` until reference data is
+    # corrected. Same lag as LAPTOP (tagged MM2) and DECIBEL (tagged MM5).
+    TRUF: MM-C67_TRUF-GAMMA-J
+    ELA: MM-C142_ELA-GAMMA-J
+    NYM: MM-C246_NYM-GAMMA-J
+    XCH: MM-C77_XCH-GAMMA-J
+    AURORA: MM-C88_AURORA-GAMMA-J
+    UFD: mm-c284_ufd-gamma-j
+    PARTI: mm-c290_parti-gamma-j
+    CROSS: MM-C319_CROSS-GAMMA-J
+    DODO: mm-c339_dodo-gamma-j
+    QI: MM-C136_QI-GAMMA-J
+    NEO: MM-C237_NEO-GAMMA-J
+    GAS: MM-C237_GAS-GAMMA-J
+    RHEA: MM-C312_RHEA-GAMMA-J
+    PUBLIC: MM-C330_PUBLIC-GAMMA-J
+    HNT: MM-C363_HNT-GAMMA-J
+    MAGMA: mm-c389_magma-gamma-j
+    VTHO: MM-C209_VTHO-GAMMA-J
+    # Renamed on CoinRoutes to lowercase between 2026-08-25 and 2026-08-28; the create-order API
+    # matches by exact NAME, so the old MM-C145_MINA-GAMMA-J 400s with "does not exist".
+    MINA: mm-c145_mina-gamma-j
+    AZTEC: mm-c402_aztec-gamma-j
+    BGB: MM-H004_BGB-GAMMA-J
+    BTW: mm-h011_btw-gamma-j
+    BSV: mm-c118-bsv-gamma-j
+    # IDOS moved to the MM4 desk 2026-10-01 — removed from this roster.
+    CHECK: mm_c415_check_gamma-j
+    GENIUS: mm-h014_genius-gamma-j
+    BILL: mm-c422_bill-gamma-j
+    NOCK: mm-h016_nock-gamma-j
+    SKL: mm-c427_skl-gamma-j
+    QUID: mm-h018_quid-gamma-j
+    TGBP: MM-C374_tGBP-GAMMA-J
+    AEDZ: mm-c397-aedz-gamma-j
+    # Added 2026-09-09, hours after listing, on the owner's instruction that it belongs to the
+    # MM3 book. ⚠️ RDS disagrees: all 19 of its active locations are tagged `desk=MM2`
+    # (KUCOIN/KRAKEN/BINANCE/OKX/BYBIT/BITGET/GATEIO/COINBASE/BITVAVO/MEXC) and today's 319 fills
+    # landed on those MM2-tagged accounts. The strategy owns its accounts, so placing from the MM3
+    # chat still trades the right book -- but until RDS is re-tagged, LAPTOP flow appears in MM2's
+    # flow alerts and `/trade today`, not MM3's. Same shape as the DECIBEL mandate (traded by MM3,
+    # still registered desk=MM5), which is pinned by id in flow_alert_bot._PINNED_LOCATIONS.
+    # Without this entry `/trade laptop ...` fell through to the desk PERP book and would have
+    # placed LAPTOP-USDT.PERP instead of spot gamma.
+    # ⚠️ Blocked CoinRoutes-side: the strategy's `users` list is humans only, so `bot_mm3user`
+    # must be added to it before a placement can succeed (it 400s until then).
+    # Deliberately NOT in DEFAULT_QTY: no default means USD-denominated sizing only, capped by
+    # the desk max_usd -- the right rails for a listing whose first 12h printed 0.79 to 5.21.
+    LAPTOP: mm-h021_laptop-gamma-j
+    # AI = GENSYN. Two unrelated tokens share the ticker 'AI' on different exchanges:
+    #   Gensyn (ours) -> okex, kucoin, bitget (~0.0209); on Binance ours is AIGENSYN-USDT
+    #   the other AI  -> binance, huobi       (~0.0179)
+    # Their 4h returns correlate only 0.28, so a price from the wrong venue is a wrong
+    # ASSET, not a stale quote. This strategy has BINANCE and HUOBI configured alongside
+    # okex/kucoin/bitget, so an unpinned order could execute against the wrong coin —
+    # pinned in trade_bot.TOKEN_VENUES (orders + market data + book) and
+    # trade_plot._TOKEN_VENUES (candles). Durable fix is CoinRoutes-side: drop
+    # BINANCE/HUOBI from this strategy's book sources in the UI.
+    AI: mm-c420_ai-gamma-j
+    # Added 2026-09-30 on the owner's instruction: traded from MM3 even though CoinRoutes names
+    # the strategy mm5-* (ignore the prefix). Hyperliquid-only, and the book is a USDC perp,
+    # BVIVMKTS-USDC.PERP, not BVIV-USDT spot -- trade_bot.PAIR_OVERRIDE supplies that pair.
+    # ⚠️ Blocked CoinRoutes-side like LAPTOP: the strategy's `users` list is humans only, so
+    # `bot_mm3user` must be added before a placement can succeed (it 400s until then).
+    # Not in DEFAULT_QTY: USD sizing only, capped by the desk max_usd.
+    BVIV: mm5-bviv-gamma-j
+    # Added 2026-10-01 on the owner's instruction. Plain spot HEMI-USDT (binance/gateio/mexc).
+    # ⚠️ Blocked CoinRoutes-side until `bot_mm3user` is added to the strategy's `users`.
+    # Not in DEFAULT_QTY: USD sizing only, capped by the desk max_usd.
+    HEMI: mm-c416_hemi-gamma-j
+    # Same asset, same account, second symbol: Binance calls Gensyn AIGENSYN-USDT because
+    # its own AI-USDT is the other token. Both codes live on mm-c420_ai-gamma-j.
+    AIGENSYN: mm-c420_ai-gamma-j
+    # ⚠️ `bot_mm3user` is not in this strategy's `users` list (checked 2026-09-29), so
+    # `/trade xdp` placements 400 until it is added CoinRoutes-side. Read-only bots are unaffected.
+    XDP: mm-c438_xdp-gamma-j
+  agg:
+    label: "MM3 Aggregator · Dashboard"
+    sheet: 1V7QrpPY-24JMXJKrT69yGLRc8ZLk6jyfLOlobaTPi4s
+    gid: 0
+  bots:
+    - "*MM3_JASONDH"
+    - "*MM3_REGIME_TRADING_CANIO"
+
+mm2:
+  # Canonical MM2 token -> strategy slug map (verified live against GET /api/strategies/), plus
+  # the desk's futures/perps hedge strategy under the "PERP" key (not a single token).
+  strategy:
+    OXT: mm-c23_oxt-gamma-j
+    FET: MM-C52_FET-GAMMA-J
+    ICP: MM-C08_ICP-GAMMA-J
+    ZEN: MM-C186_ZEN-GAMMA-J
+    CSPR: MM-C56_CSPR-GAMMA-J
+    SAFE: MM-C86_SAFE-GAMMA-J
+    NEAR: MM-C75_NEAR-GAMMA-J
+    CELO: MM-C267_CELO-GAMMA-J
+    CFX: MM-C119_CFX-GAMMA-J
+    VET: MM-C209_VET-GAMMA-J
+    CC: MM-C371_CC-GAMMA-J
+    POL: MM-H001_POL-GAMMA-J
+    RARE: MM-C177_RARE-GAMMA-J
+    TNSR: MM-C307_TNSR-GAMMA-J
+    LINEA: MM-C353_LINEA-GAMMA-J
+    ZKC: MM-C324_ZKC-GAMMA-J
+    COMP: mm-c417_comp-gamma-j
+    YB: mm-h015-yb-gamma-j
+    PERP: futurestrading_ha_j
+  agg:
+    label: "MM2 Aggregator · Summary"
+    sheet: 14GJ_4OoJC3NHjuginlufxIPDEy72q100n6jOUsVqoRg
+    gid: 1224734533
+  bots:
+    - "*MM2_JASON_DH"
+    - "*MM2_FAKE_GAMMA_HEDGER"
+    - "*MM2_FAKE_GAMMA_HEDGER_OKX"
+    - "*MM2_FAKE_GAMMA_NOTIFIER"
+
+mm4:
+  # Spot gamma only: MM4 does not hedge in a futures book, so there is NO `perp_strategy`. A token
+  # outside this roster is refused rather than routed to another desk's futures account.
+  # Roster = column B of the MM4_Aggregator_V2 Dashboard, resolved to exact CoinRoutes NAMEs.
+  # Runs on CR_API_TOKEN_MM3: `bot_mm3user` is already in all 15 strategies' `users` lists.
+  strategy:
+    CGPT: MM-C191_CGPT-GAMMA-J
+    SPARKLET: MM-C116_SPARKLET-GAMMA-J
+    OPEN: mm-c354_open-gamma-j
+    APR: MM-C369_APR-GAMMA-J
+    GWEI: MM-C398_GWEI-GAMMA-J
+    A47: MM-C311_A47-GAMMA-J
+    BSB: mm-c410_bsb-gamma-j
+    FUEL: mm-c263_fuel-gamma-j
+    LAVA: MM-C384_LAVA-GAMMA-J
+    SD: MM-C168_SD-GAMMA-J
+    SLX: mm-c424_slx-gamma-j
+    # The USDT book, not MM-C236_CXT-EUR-GAMMA-J (bitstamp-only, EUR-quoted) — owner's call.
+    CXT: MM-C236_CXT-GAMMA-J
+    DGAI: mm-c439_dgai-gamma-j
+    IDOS: mm-c378_idos-gamma-j
+    HPL: mm-c430_hpl-gamma-j
+  agg:
+    label: "MM4 Aggregator · Dashboard"
+    sheet: 1uw99ez07L-c9NzymrBJRSGUeVycxTB_guX_6uSbUdv4
+    gid: 0
+
+otc:
+  # OTC desk: ONE catch-all SPOT strategy for every token, no per-token gamma roster — the third
+  # desk shape (gamma desks map token->strategy; treasury is one strategy but PERPS).
+  # `spot_strategy` routes any token to `<TOKEN>-<quote>` spot on this book; there is no
+  # `perp_strategy`, because the account is spot (`is_margin: false`), so `/trade … perp` is
+  # refused. Runs on CR_API_TOKEN_MM3 — `bot_mm3user` is already in the strategy's `users` list.
+  # ⚠️ This book executes on BINANCE and KUCOIN only (2 accounts) — far narrower than the
+  # 11-venue OTC-GENERAL-J. A token that trades on neither has no book and is refused, not routed.
+  spot_strategy: OTC-C04.2-HA-J
+  strategy: {}
+
+treasury:
+  # Prop book: one CoinRoutes strategy for every token (no per-token gamma roster). Perps.
+  # Its aggregator is NOT a Google Sheet — agg_bot reads the Pluto portfolio endpoint
+  # (portfolio TREASURYPROPTOTAL), so there is no `agg` sheet block here.
+  perp_strategy: g20ha-treasury-prop
+  strategy: {}
+  bots:
+    - "*TREASURY_PROP_JASONDH"
+    - "*TREASURY_PROP_HEDGER"
+    - "*TREASURYPROP Complex futures"
+    - "*TREASURYPROP NOTIFIER"

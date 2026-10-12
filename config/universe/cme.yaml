@@ -1,0 +1,434 @@
+# Instrument universe for CME Group futures (ARCHITECTURE §3). Covers CME/CBOT/
+# NYMEX/COMEX — all reachable via the same Databento GLBX.MDP3 dataset, so they
+# share source "cme". Vendor/fetch specifics (parent symbols) live in
+# config/data/cme.yaml, not here.
+#
+# `multiplier` is the point value: tick_value = tick_size * multiplier, in the
+# instrument's *quoted* price unit. Most CME products quote in USD; grains and
+# soybean oil quote in CENTS (noted inline), so their tick_size/multiplier are in
+# cents to keep the identity above true.
+#
+# Session templates: research confirms equity-index, FX, rates, energy and metals
+# all trade the same Globex schedule, so they share one template; CBOT grains run
+# a distinct overnight+day session.
+
+sessions:
+  cme_globex: "Sun 17:00 -> Fri 16:00 America/Chicago, daily maintenance halt 16:00-17:00"
+  cbot_grain: "Sun-Fri 19:00 -> 07:45 + Mon-Fri 08:30 -> 13:20 America/Chicago (overnight electronic + day session)"
+
+# --- Equity index (cash-settled to the index) ---
+
+es:
+  asset_type: futures
+  exchange: cme
+  currency: USD
+  tick_size: 0.25
+  multiplier: 50            # $50 x index; tick_value = 0.25 * 50 = $12.50
+  rolling_cycle: [H, M, U, Z]
+  strips: 2                 # continuous strips to build (es1, es2)
+  sector: equity
+  subsector: us_large_cap
+  session: cme_globex
+  settlement: cash
+
+nq:
+  asset_type: futures
+  exchange: cme
+  currency: USD
+  tick_size: 0.25
+  multiplier: 20            # $20 x index; tick_value = $5.00
+  rolling_cycle: [H, M, U, Z]
+  strips: 2
+  sector: equity
+  subsector: us_tech
+  session: cme_globex
+  settlement: cash
+
+ym:
+  asset_type: futures
+  exchange: cme
+  currency: USD
+  tick_size: 1.0
+  multiplier: 5             # $5 x index; tick_value = $5.00
+  rolling_cycle: [H, M, U, Z]
+  strips: 2
+  sector: equity
+  subsector: us_blue_chip
+  session: cme_globex
+  settlement: cash
+
+rty:
+  asset_type: futures
+  exchange: cme
+  currency: USD
+  tick_size: 0.10
+  multiplier: 50            # $50 x index; tick_value = $5.00
+  rolling_cycle: [H, M, U, Z]
+  strips: 2
+  sector: equity
+  subsector: us_small_cap
+  session: cme_globex
+  settlement: cash
+
+# --- FX (physically delivered; quoted USD per unit of base currency). The
+# multiplier equals the base-currency notional, so tick_value = tick * notional. ---
+
+6e:
+  asset_type: futures
+  exchange: cme
+  currency: USD
+  tick_size: 0.00005
+  multiplier: 125000        # 125,000 EUR; tick_value = $6.25
+  rolling_cycle: [H, M, U, Z]
+  strips: 2
+  sector: fx
+  subsector: g10
+  session: cme_globex
+  settlement: physical
+
+6j:
+  asset_type: futures
+  exchange: cme
+  currency: USD
+  tick_size: 0.0000005
+  multiplier: 12500000      # 12,500,000 JPY; tick_value = $6.25
+  rolling_cycle: [H, M, U, Z]
+  strips: 2
+  sector: fx
+  subsector: g10
+  session: cme_globex
+  settlement: physical
+
+6b:
+  asset_type: futures
+  exchange: cme
+  currency: USD
+  tick_size: 0.0001
+  multiplier: 62500         # 62,500 GBP; tick_value = $6.25
+  rolling_cycle: [H, M, U, Z]
+  strips: 2
+  sector: fx
+  subsector: g10
+  session: cme_globex
+  settlement: physical
+
+6a:
+  asset_type: futures
+  exchange: cme
+  currency: USD
+  tick_size: 0.00005
+  multiplier: 100000        # 100,000 AUD; tick_value = $5.00
+  rolling_cycle: [H, M, U, Z]
+  strips: 2
+  sector: fx
+  subsector: g10
+  session: cme_globex
+  settlement: physical
+
+6c:
+  asset_type: futures
+  exchange: cme
+  currency: USD
+  tick_size: 0.00005
+  multiplier: 100000        # 100,000 CAD; tick_value = $5.00
+  rolling_cycle: [H, M, U, Z]
+  strips: 2
+  sector: fx
+  subsector: g10
+  session: cme_globex
+  settlement: physical
+
+6s:
+  asset_type: futures
+  exchange: cme
+  currency: USD
+  tick_size: 0.0001
+  multiplier: 125000        # 125,000 CHF; tick_value = $12.50
+  rolling_cycle: [H, M, U, Z]
+  strips: 2
+  sector: fx
+  subsector: g10
+  session: cme_globex
+  settlement: physical
+
+# --- Interest rates. Treasuries quote in points of par (100) with per-contract
+# tick fractions; face/100 = multiplier. STIRs are IMM-index (100 - rate). ---
+
+zt:
+  asset_type: futures
+  exchange: cme
+  currency: USD
+  tick_size: 0.00390625     # 1/8 of 1/32 point
+  multiplier: 2000          # $200,000 face / 100; tick_value = $7.8125
+  rolling_cycle: [H, M, U, Z]
+  strips: 2
+  sector: rates
+  subsector: us_2y
+  session: cme_globex
+  settlement: physical
+
+zf:
+  asset_type: futures
+  exchange: cme
+  currency: USD
+  tick_size: 0.0078125      # 1/4 of 1/32 point
+  multiplier: 1000          # $100,000 face / 100; tick_value = $7.8125
+  rolling_cycle: [H, M, U, Z]
+  strips: 2
+  sector: rates
+  subsector: us_5y
+  session: cme_globex
+  settlement: physical
+
+zn:
+  asset_type: futures
+  exchange: cme
+  currency: USD
+  tick_size: 0.015625       # 1/2 of 1/32 point
+  multiplier: 1000          # tick_value = $15.625
+  rolling_cycle: [H, M, U, Z]
+  strips: 2
+  sector: rates
+  subsector: us_10y
+  session: cme_globex
+  settlement: physical
+
+tn:
+  asset_type: futures
+  exchange: cme
+  currency: USD
+  tick_size: 0.015625       # 1/2 of 1/32 point
+  multiplier: 1000          # tick_value = $15.625
+  rolling_cycle: [H, M, U, Z]
+  strips: 2
+  sector: rates
+  subsector: us_ultra_10y
+  session: cme_globex
+  settlement: physical
+
+zb:
+  asset_type: futures
+  exchange: cme
+  currency: USD
+  tick_size: 0.03125        # 1/32 point
+  multiplier: 1000          # tick_value = $31.25
+  rolling_cycle: [H, M, U, Z]
+  strips: 2
+  sector: rates
+  subsector: us_30y
+  session: cme_globex
+  settlement: physical
+
+ub:
+  asset_type: futures
+  exchange: cme
+  currency: USD
+  tick_size: 0.03125        # 1/32 point
+  multiplier: 1000          # tick_value = $31.25
+  rolling_cycle: [H, M, U, Z]
+  strips: 2
+  sector: rates
+  subsector: us_ultra_bond
+  session: cme_globex
+  settlement: physical
+
+zq:
+  asset_type: futures
+  exchange: cme
+  currency: USD
+  tick_size: 0.0025         # nearest month 1/4 bp; deferred months 1/2 bp (0.005)
+  multiplier: 4166.67       # $5M x 1% x 30/360; tick_value ~= $10.4175
+  rolling_cycle: [F, G, H, J, K, M, N, Q, U, V, X, Z]   # monthly
+  strips: 2
+  sector: rates
+  subsector: us_stir
+  session: cme_globex
+  settlement: cash
+
+sr3:
+  asset_type: futures
+  exchange: cme
+  currency: USD
+  tick_size: 0.0025         # <=4 months to expiry 1/4 bp; else 1/2 bp (0.005)
+  multiplier: 2500          # $2,500 x index ($25/bp); tick_value = $6.25
+  rolling_cycle: [H, M, U, Z]
+  strips: 2
+  sector: rates
+  subsector: us_stir
+  session: cme_globex
+  settlement: cash
+
+# --- Energy (NYMEX, physical delivery) ---
+
+cl:
+  asset_type: futures
+  exchange: cme
+  currency: USD
+  tick_size: 0.01           # USD/barrel
+  multiplier: 1000          # 1,000 bbl; tick_value = $10.00
+  rolling_cycle: [F, G, H, J, K, M, N, Q, U, V, X, Z]
+  strips: 2
+  sector: energy
+  subsector: crude
+  session: cme_globex
+  settlement: physical
+
+ng:
+  asset_type: futures
+  exchange: cme
+  currency: USD
+  tick_size: 0.001          # USD/MMBtu
+  multiplier: 10000         # 10,000 MMBtu; tick_value = $10.00
+  rolling_cycle: [F, G, H, J, K, M, N, Q, U, V, X, Z]
+  strips: 2
+  sector: energy
+  subsector: natural_gas
+  session: cme_globex
+  settlement: physical
+
+rb:
+  asset_type: futures
+  exchange: cme
+  currency: USD
+  tick_size: 0.0001         # USD/gallon
+  multiplier: 42000         # 42,000 gal; tick_value = $4.20
+  rolling_cycle: [F, G, H, J, K, M, N, Q, U, V, X, Z]
+  strips: 2
+  sector: energy
+  subsector: refined
+  session: cme_globex
+  settlement: physical
+
+ho:
+  asset_type: futures
+  exchange: cme
+  currency: USD
+  tick_size: 0.0001         # USD/gallon
+  multiplier: 42000         # 42,000 gal; tick_value = $4.20
+  rolling_cycle: [F, G, H, J, K, M, N, Q, U, V, X, Z]
+  strips: 2
+  sector: energy
+  subsector: refined
+  session: cme_globex
+  settlement: physical
+
+# --- Metals (COMEX; PL is NYMEX). All quoted in USD. ---
+
+gc:
+  asset_type: futures
+  exchange: cme
+  currency: USD
+  tick_size: 0.10           # USD/troy oz
+  multiplier: 100           # 100 troy oz; tick_value = $10.00
+  rolling_cycle: [G, J, M, Q, V, Z]     # even months
+  strips: 2
+  sector: metals
+  subsector: precious
+  session: cme_globex
+  settlement: physical
+
+si:
+  asset_type: futures
+  exchange: cme
+  currency: USD
+  tick_size: 0.005          # USD/troy oz
+  multiplier: 5000          # 5,000 troy oz; tick_value = $25.00
+  rolling_cycle: [H, K, N, U, Z]
+  strips: 2
+  sector: metals
+  subsector: precious
+  session: cme_globex
+  settlement: physical
+
+hg:
+  asset_type: futures
+  exchange: cme
+  currency: USD
+  tick_size: 0.0005         # USD/pound (= 0.05 cents/lb)
+  multiplier: 25000         # 25,000 lb; tick_value = $12.50
+  rolling_cycle: [H, K, N, U, Z]
+  strips: 2
+  sector: metals
+  subsector: base
+  session: cme_globex
+  settlement: physical
+
+pl:
+  asset_type: futures
+  exchange: cme
+  currency: USD
+  tick_size: 0.10           # USD/troy oz
+  multiplier: 50            # 50 troy oz; tick_value = $5.00
+  rolling_cycle: [F, J, N, V]
+  strips: 2
+  sector: metals
+  subsector: precious
+  session: cme_globex
+  settlement: physical
+
+# --- Agriculture (CBOT; grain session). Grains/soybean oil quote in CENTS. ---
+
+zc:
+  asset_type: futures
+  exchange: cme
+  currency: USD
+  tick_size: 0.25           # cents/bushel (1/4 cent)
+  multiplier: 50            # 5,000 bu; tick_value = $12.50
+  rolling_cycle: [H, K, N, U, Z]
+  strips: 2
+  sector: agriculture
+  subsector: grain
+  session: cbot_grain
+  settlement: physical
+
+zs:
+  asset_type: futures
+  exchange: cme
+  currency: USD
+  tick_size: 0.25           # cents/bushel
+  multiplier: 50            # 5,000 bu; tick_value = $12.50
+  rolling_cycle: [F, H, K, N, Q, U, X]
+  strips: 2
+  sector: agriculture
+  subsector: oilseed
+  session: cbot_grain
+  settlement: physical
+
+zw:
+  asset_type: futures
+  exchange: cme
+  currency: USD
+  tick_size: 0.25           # cents/bushel
+  multiplier: 50            # 5,000 bu; tick_value = $12.50
+  rolling_cycle: [H, K, N, U, Z]
+  strips: 2
+  sector: agriculture
+  subsector: grain
+  session: cbot_grain
+  settlement: physical
+
+zl:
+  asset_type: futures
+  exchange: cme
+  currency: USD
+  tick_size: 0.01           # cents/pound (1/100 cent)
+  multiplier: 600           # 60,000 lb; tick_value = $6.00
+  rolling_cycle: [F, H, K, N, Q, U, V, Z]
+  strips: 2
+  sector: agriculture
+  subsector: oilseed
+  session: cbot_grain
+  settlement: physical
+
+zm:
+  asset_type: futures
+  exchange: cme
+  currency: USD
+  tick_size: 0.10           # USD/short ton
+  multiplier: 100           # 100 short tons; tick_value = $10.00
+  rolling_cycle: [F, H, K, N, Q, U, V, Z]
+  strips: 2
+  sector: agriculture
+  subsector: oilseed
+  session: cbot_grain
+  settlement: physical

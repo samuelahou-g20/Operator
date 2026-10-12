@@ -1,0 +1,39 @@
+# MEXC fetcher config (ARCHITECTURE §3). Public market-data endpoints, no credentials.
+#
+# Same multi-market shape as bybit: one block per asset_type. The two markets live on
+# DIFFERENT hosts with DIFFERENT kline layouts, so `rest_url` is per-market (not shared):
+#   - spot  -> https://api.mexc.com        /api/v3/klines   (JSON array rows, ms, interval "60m")
+#   - perps -> https://contract.mexc.com   /api/v1/contract/kline/{SYMBOL}
+#              (columnar arrays, SECONDS, interval "Min60", underscore symbol BTC_USDT)
+# There is no bulk-dump host — all data comes from paginated REST walked backwards.
+# Everything MEXC-sourced is `small` storage (§2.2): 1h bars -> one parquet file per symbol.
+
+max_workers: 4
+throttle_per_sec: 20            # public IP limit; stay well under
+
+markets:
+  perps:                                          # USDT-settled perpetuals (contract host)
+    asset_type: perps
+    rest_url: "https://contract.mexc.com"
+    data_types:
+      bars:
+        timeframes: ["1h"]
+        storage:
+          "1h": small
+  spot:                                           # spot market (the long leg)
+    asset_type: spot
+    rest_url: "https://api.mexc.com"
+    data_types:
+      bars:
+        timeframes: ["1h"]
+        storage:
+          "1h": small
+
+backfill:
+  start: "2021-01-01"             # default range start (CLI can override)
+  symbols: ["btcusdt", "ethusdt"]
+
+streaming:
+  # MEXC spot websocket is protobuf-only, so live prices come from polling the batch
+  # ticker REST endpoints (spot + perp) and republishing to the standard trade channel.
+  poll_interval: 3.0             # seconds between batch-ticker polls

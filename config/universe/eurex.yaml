@@ -1,0 +1,152 @@
+# Instrument universe for Eurex futures (ARCHITECTURE §3). Equity index + European
+# fixed income. NOTE: the repo has no Eurex fetcher/streamer yet (config/data has
+# only cme + binance) — this file is instrument reference metadata; wiring a
+# Eurex data source (e.g. Databento XEUR) is separate work.
+#
+# `multiplier` is the point value: tick_value = tick_size * multiplier. Equity
+# index quotes in index points; fixed income quotes in percent of par, where a
+# full 1.00 price point = EUR 1,000 on the EUR 100,000 notional (so multiplier
+# = 1000 for every bond future).
+#
+# Session templates: FESX/FDAX/FXXP and the German/French bond complex share the
+# same 02:10-22:00 CET window; SMI (Swiss) and BTP (Italian) differ.
+
+sessions:
+  eurex_extended: "02:10 -> 22:00 Europe/Berlin continuous (pre-trading 02:00, post 22:00-22:25)"
+  eurex_smi: "07:50 -> 22:00 Europe/Zurich continuous (pre-trading 07:30, post 22:00-22:25)"
+  eurex_btp: "08:00 -> 19:00 Europe/Berlin continuous"
+
+# --- Equity index (cash-settled) ---
+
+fesx:
+  asset_type: futures
+  exchange: eurex
+  currency: EUR
+  tick_size: 1.0            # index points
+  multiplier: 10            # EUR 10 / point; tick_value = EUR 10
+  rolling_cycle: [H, M, U, Z]
+  strips: 2
+  sector: equity
+  subsector: eu_blue_chip
+  session: eurex_extended
+  settlement: cash
+
+fdax:
+  asset_type: futures
+  exchange: eurex
+  currency: EUR
+  tick_size: 1.0            # index points
+  multiplier: 25            # EUR 25 / point; tick_value = EUR 25
+  rolling_cycle: [H, M, U, Z]
+  strips: 2
+  sector: equity
+  subsector: de_large_cap
+  session: eurex_extended
+  settlement: cash
+
+fsmi:
+  asset_type: futures
+  exchange: eurex
+  currency: CHF
+  tick_size: 1.0            # index points
+  multiplier: 10            # CHF 10 / point; tick_value = CHF 10
+  rolling_cycle: [H, M, U, Z]
+  strips: 2
+  sector: equity
+  subsector: ch_large_cap
+  session: eurex_smi
+  settlement: cash
+
+fxxp:
+  asset_type: futures
+  exchange: eurex
+  currency: EUR
+  tick_size: 0.1            # index points
+  multiplier: 50            # EUR 50 / point; tick_value = EUR 5
+  rolling_cycle: [H, M, U, Z]
+  strips: 2
+  sector: equity
+  subsector: eu_broad
+  session: eurex_extended
+  settlement: cash
+
+# --- Fixed income (physical delivery of eligible bonds; percent of par,
+# EUR 100,000 notional -> multiplier 1000). ---
+
+fgbs:
+  asset_type: futures
+  exchange: eurex
+  currency: EUR
+  tick_size: 0.005          # percent of par
+  multiplier: 1000          # tick_value = EUR 5
+  rolling_cycle: [H, M, U, Z]
+  strips: 2
+  sector: rates
+  subsector: de_2y
+  session: eurex_extended
+  settlement: physical
+
+fgbm:
+  asset_type: futures
+  exchange: eurex
+  currency: EUR
+  tick_size: 0.01           # percent of par
+  multiplier: 1000          # tick_value = EUR 10
+  rolling_cycle: [H, M, U, Z]
+  strips: 2
+  sector: rates
+  subsector: de_5y
+  session: eurex_extended
+  settlement: physical
+
+fgbl:
+  asset_type: futures
+  exchange: eurex
+  currency: EUR
+  tick_size: 0.01           # percent of par
+  multiplier: 1000          # tick_value = EUR 10
+  rolling_cycle: [H, M, U, Z]
+  strips: 2
+  sector: rates
+  subsector: de_10y
+  session: eurex_extended
+  settlement: physical
+
+fgbx:
+  asset_type: futures
+  exchange: eurex
+  currency: EUR
+  tick_size: 0.02           # percent of par
+  multiplier: 1000          # tick_value = EUR 20
+  rolling_cycle: [H, M, U, Z]
+  strips: 2
+  sector: rates
+  subsector: de_30y
+  session: eurex_extended
+  settlement: physical
+
+foat:
+  asset_type: futures
+  exchange: eurex
+  currency: EUR
+  tick_size: 0.01           # percent of par
+  multiplier: 1000          # tick_value = EUR 10
+  rolling_cycle: [H, M, U, Z]
+  strips: 2
+  sector: rates
+  subsector: fr_10y
+  session: eurex_extended
+  settlement: physical
+
+fbtp:
+  asset_type: futures
+  exchange: eurex
+  currency: EUR
+  tick_size: 0.01           # percent of par
+  multiplier: 1000          # tick_value = EUR 10
+  rolling_cycle: [H, M, U, Z]
+  strips: 2
+  sector: rates
+  subsector: it_10y
+  session: eurex_btp
+  settlement: physical

@@ -1,0 +1,84 @@
+# Quoting boxes per program: the LM2Strategy deployments whose /rest/calculators/params the ZP
+# reads for each venue's dynamic-mode settings (levels, base min/max spread, vol scaling factors,
+# reference vol). This replaces gamma-dash, which is behind Entra SSO from a server.
+#
+# GENERATED — do not hand-edit. Refresh from the authoritative AWS SSM parameter with:
+#     uv run python -m scripts.zp_boxes --write
+mm1:
+  euprod21: http://3.69.79.157:30087
+  euprod7: http://3.77.11.114:30080
+  euprod8: http://3.77.11.114:30081
+  spprod1: http://18.140.34.206:30080
+  usprod7: http://3.213.225.16:30083
+mm2:
+  euprod15: http://3.69.79.157:30085
+  euprod23: http://18.195.243.219:30081
+  euprod25: http://18.195.243.219:30083
+  euprod26: http://13.134.240.139:30080
+  euprod28: http://18.175.81.130:30080
+  euprod31: http://3.66.33.217:30080
+  euprod4: http://3.126.155.25:30080
+  hkprod20: http://18.167.171.49:30080
+  spprod10: http://54.251.158.203:30083
+  spprod3: http://52.77.186.172:30081
+  spprod7: http://18.140.34.206:30082
+  tkprod18: http://35.74.229.136:30081
+  tkprod24: http://54.92.53.210:30080
+  tkprod28: http://54.248.5.234:30081
+  tkprod30: http://18.179.64.182:30080
+  tkprod35: http://57.182.106.162:30082
+  tkprod38: http://57.180.159.190:30080
+  tkprod52: http://35.74.73.17:30081
+  tkprod6: http://13.231.29.145:30081
+  usprod4: http://3.213.225.16:30080
+mm3:
+  euprod14: http://3.69.79.157:30084
+  euprod24: http://18.195.243.219:30082
+  euprod27: http://13.134.240.139:30081
+  euprod29: http://18.175.81.130:30081
+  euprod32: http://3.66.33.217:30081
+  euprod5: http://3.126.155.25:30081
+  spprod2: http://52.77.186.172:30080
+  spprod6: http://18.140.34.206:30081
+  spprod9: http://54.251.158.203:30082
+  tkprod13: http://13.231.29.145:30082
+  tkprod16: http://35.74.229.136:30080
+  tkprod19: http://35.74.229.136:30082
+  tkprod25: http://54.92.53.210:30081
+  tkprod29: http://54.248.5.234:30082
+  tkprod3: http://13.231.29.145:30080
+  tkprod31: http://18.179.64.182:30081
+  tkprod33: http://57.182.106.162:30080
+  tkprod39: http://57.180.159.190:30081
+  tkprod4: http://52.198.54.149:30082
+  usprod5: http://3.213.225.16:30081
+mm4:
+  euprod10: http://3.69.79.157:30080
+  euprod22: http://18.195.243.219:30080
+  euprod33: http://18.175.81.130:30083
+  spprod11: http://54.251.158.203:30084
+  tkprod1: http://52.198.54.149:30080
+  tkprod10: http://52.198.54.149:30086
+  tkprod2: http://52.198.54.149:30081
+  tkprod36: http://18.179.64.182:30083
+  tkprod42: http://57.180.159.190:30082
+  tkprod5: http://52.198.54.149:30083
+  tkprod8: http://52.198.54.149:30085
+  usprod6: http://3.213.225.16:30082
+mm5:
+  euprod34: http://3.69.79.157:30088
+  euprod35: http://3.66.33.217:30082
+  euprod36: http://18.175.81.130:30084
+  spprod12: http://13.250.253.252:30080
+  spprod13: http://18.140.34.206:30083
+  tkprod44: http://54.248.5.234:30083
+  tkprod45: http://13.231.29.145:30084
+  tkprod46: http://52.198.54.149:30089
+  tkprod49: http://35.74.73.17:30080
+  tkprod50: http://54.92.53.210:30082
+  tkprod51: http://35.74.229.136:30083
+  usprod8: http://3.213.225.16:30084
+  usprod9: http://3.213.225.16:30085
+perp:
+  spprod8: http://54.251.158.203:30081
+  tkprod32: http://18.179.64.182:30082
