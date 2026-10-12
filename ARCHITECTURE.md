@@ -282,7 +282,7 @@ Tracks and reconciles everything execution-related, on top of adapters.
       def orders(self, strategy=None, status=None) -> pd.DataFrame
       def reconcile(self, source) -> ReconcileReport   # plain dataclass of diffs
   ```
-- Strategies place orders **through the OMS**, not through adapters directly, so all live activity is recorded and reconcilable in one place.
+- Orders on the Binance / Hyperliquid adapters go **through the OMS**, not through the adapters directly, so that activity is recorded and reconcilable in one place. Desk orders take the other path: CoinRoutes, behind `trade_bot`'s rails (§15).
 
 ---
 
@@ -324,8 +324,8 @@ Failures are logged as warnings to `logs/quality/` — they never block the writ
 - **Supervision**: the Operator and the desk bots run as `systemd --user` units from
   `deploy/systemd/` (`operator.service`, `desk-bot@<name>.service`), installed with `make
   install-units` and driven through the `Makefile` (`make status`, `make operator`, `make
-  restart-<bot>`). The `pluto-prc` and `icp-snapshot` timers run the same way but their unit files
-  are not in `deploy/systemd/` yet.
+  restart-<bot>`). The `pluto-prc` and `icp-snapshot` timers live there too and install the same
+  way.
 
 ---
 

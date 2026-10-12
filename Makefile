@@ -87,11 +87,13 @@ operator-logs:            ## follow just the Operator
 install-units:            ## install deploy/systemd/* with this checkout's path substituted in
 	@# The templates carry a /path/to/operator placeholder on purpose: copying one in raw
 	@# installs a unit that cannot chdir, which is exactly how the desk went down once.
-	@for f in operator.service 'desk-bot@.service'; do \
+	@for f in operator.service 'desk-bot@.service' pluto-prc.service pluto-prc.timer \
+	          icp-snapshot.service icp-snapshot.timer; do \
 	    sed "s#/path/to/operator#$(CURDIR)#g" "deploy/systemd/$$f" > "$(UNIT_DIR)/$$f" \
 	        && echo "installed $$f -> $(CURDIR)"; done
 	$(SYSTEMCTL) daemon-reload
-	@grep -h WorkingDirectory $(UNIT_DIR)/operator.service $(UNIT_DIR)/desk-bot@.service
+	@grep -h WorkingDirectory $(UNIT_DIR)/operator.service $(UNIT_DIR)/desk-bot@.service \
+	    $(UNIT_DIR)/pluto-prc.service $(UNIT_DIR)/icp-snapshot.service
 
 test:                     ## the full suite
 	uv run pytest -q

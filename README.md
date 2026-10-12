@@ -35,8 +35,6 @@ make check               # lint + tests: run before restarting anything
 make install-units       # first time on a host: install deploy/systemd/* for this checkout
 ```
 
-The two timer units are not in `deploy/systemd/` yet, so `install-units` does not recreate them.
-
 ## Setup
 
 `uv` only, run from the repo root:

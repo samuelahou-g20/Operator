@@ -1,0 +1,17 @@
+[Unit]
+Description=Stamp the ICP-MM snapshot at the desk's own daily cutoff
+
+[Timer]
+# 23:58, NOT the 23:31 the 'FX P&L' looper uses. The sheet's trading counters are labelled
+# "Today (UTC)" (Config!A3) -- they reset at 00:00 UTC. Anchoring delta at 23:31 while reading
+# a counter that runs 00:00->23:31 would drop 29 minutes of fills from every single day. 23:58
+# leaves ~2 minutes, and stays clear of the reset itself: a snapshot taken at 00:00:00 could
+# catch a zeroed counter and silently report a day of no trading.
+OnCalendar=*-*-* 23:58:00 UTC
+# The sheet is live-recalculated; if the box was asleep at 23:31 a late run still beats a hole
+# in the series, and write_snapshot replaces rather than duplicates the day.
+Persistent=true
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

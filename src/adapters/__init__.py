@@ -12,7 +12,7 @@ these canonical columns:
     fills:       fill_id, order_id, symbol, side, qty, price, fee, ts
 
 `get_adapter(source)` constructs the right adapter from `config/data/{source}.yaml` + env
-credentials. Strategies must place orders through the OMS (§10), not adapters directly.
+credentials. Orders on these adapters go through the OMS (§10), not adapters directly.
 
 MUST NOT: hold strategy/portfolio logic, compute positions/PnL (that is the OMS), or be an
 abstract base / capability registry (plain classes, no ABC).

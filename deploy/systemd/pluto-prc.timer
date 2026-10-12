@@ -1,0 +1,13 @@
+[Unit]
+Description=Refresh the Pluto PRC tabs every minute
+
+[Timer]
+OnCalendar=minutely
+# No Persistent=true: this is a live snapshot, so a run missed while the box was down is
+# worthless -- replaying it on boot would stamp a stale "Requested At" over fresh data.
+# No RandomizedDelaySec: at a 60s period a random offset is a big fraction of the interval and
+# would make the gap between stamps uneven.
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target

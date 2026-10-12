@@ -6,7 +6,7 @@ Token <token>`` header. Each method returns a DataFrame of the API's native fiel
 numeric/timestamp coercion (faithful, not remapped to another schema).
 
 Read-only by design: there is NO order-placement/modify/cancel path here. Order entry stays
-out of this module (per ARCHITECTURE §10 it would go through the OMS, never an adapter).
+out of this module: it lives in ``trade.py``, called only behind ``trade_bot``'s rails (§15).
 
 MUST NOT: place/modify/cancel orders, hold strategy or PnL logic, or open the data lake.
 Full vendor spec: ``docs/references/coinroutes_sor_api_v4.3.18.yaml``.

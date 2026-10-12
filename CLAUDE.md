@@ -64,8 +64,11 @@ Scripts run in **module mode** (`python -m scripts.x`), not script mode — scri
   instrument the lake fetches (generated via `discover_universe --write`; hand-set fields survive
   regeneration); the lake only gates data availability. Never resolve a universe from the lake
   alone.
-- **All live orders go through the OMS**, never directly through adapters. Adapters are thin API
-  translation — no business logic, no position math.
+- **Two order paths, nothing else places orders.** Desk orders go to CoinRoutes
+  (`src/adapters/coinroutes/trade.py`), called only from `trade_bot` and the Operator's
+  `execution.py`, and only after `trade_bot.prepare_order` / `prepare_scalper` and its allowlist
+  + caps. Orders on the Binance / Hyperliquid adapters go through the OMS (`src/oms/`), never the
+  adapter directly. Adapters are thin API translation — no business logic, no position math.
 - **Schemas defined once** in `src/data/schemas.py`. Fetchers normalize vendor data on write;
   `query` guarantees output conforms. Funding is stored one row per settlement with
   `next_funding_ts` from settlement spacing — venue intervals are dynamic; **never annualize

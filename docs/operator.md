@@ -28,7 +28,7 @@ Telegram ──/operator …──▶ gateway (auth: served chat ∧ desk pin; a
 
 The model never executes anything and never holds a credential; it only emits tool calls.
 `policy.py` is the gate: a pure function of risk class, desk, the requester's trader status, the
-kill switch and the args, returning a **mode** per call (`execute`, `dry_run`, `denied`). The
+kill switch and the args, returning a **mode** per call (`execute`, `confirm`, `dry_run`, `denied`). The
 phase is one table in `policy.MODES`. Caps and rails stay in `scripts/trade_bot.py`: the money
 tools build through `trade_bot.prepare_order` / `prepare_scalper`, the exact pre-placement path a
 typed `/trade` or `/scalper` takes, so a preview can never skip a rail the live bot enforces.
