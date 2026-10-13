@@ -109,6 +109,18 @@ def test_spot_pagination_terminates_and_covers(monkeypatch):
     assert starts == sorted(starts) and len(set(starts)) == 3   # forward walk, strictly advancing
 
 
+def test_spot_5m_walk_steps_by_the_bar_not_the_hour(monkeypatch):
+    """The walk once stepped a fixed hour past the newest row: fine at 1h, but at 5m it skipped
+    the 11 bars after every page boundary."""
+    step = 5 * 60_000
+    rows = _spot_rows(30, step=step)
+    calls = []
+    monkeypatch.setattr(backfill, "_get_json", _spot_server(rows, calls, page=7))
+    df = backfill._fetch_klines_spot("https://x", "btcusdt", backfill.SPOT_INTERVALS["5m"],
+                                     _JAN1, _JAN1 + 29 * step, _NO_THROTTLE)
+    assert sorted(df["start_time"]) == [r[0] for r in rows]
+
+
 def test_perp_walkback_terminates_and_covers(monkeypatch):
     rows = _perp_rows(5)
     calls = []

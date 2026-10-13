@@ -73,7 +73,7 @@ def test_funding_request_construction_no_start_time(monkeypatch):
 
 
 def test_interval_codes():
-    assert backfill.INTERVALS == {"1m": "1", "1h": "60", "1d": "D"}
+    assert backfill.INTERVALS == {"1m": "1", "5m": "5", "1h": "60", "1d": "D"}
 
 
 def test_result_unwrap_raises_on_nonzero_retcode():

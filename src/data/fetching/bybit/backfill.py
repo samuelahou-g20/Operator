@@ -39,7 +39,7 @@ VENDOR_COLUMNS: dict[str, list[str]] = {
 }
 
 # Bybit v5 `interval` codes per bar timeframe.
-INTERVALS = {"1m": "1", "1h": "60", "1d": "D"}
+INTERVALS = {"1m": "1", "5m": "5", "1h": "60", "1d": "D"}
 
 
 # ---------------------------------------------------------------- http helpers

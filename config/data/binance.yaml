@@ -45,9 +45,10 @@ markets:
     data_types:
       bars:
         dump: klines
-        timeframes: ["1h"]
+        timeframes: ["1h", "5m"]   # 5m: backfill-only (move-alert calibration); daily is 1h
         storage:
           "1h": small
+          "5m": small
 
 backfill:
   start: "2021-01-01"             # default range start (CLI can override)

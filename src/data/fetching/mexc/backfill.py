@@ -1,6 +1,6 @@
 """MEXC market-data historical backfill via public REST (ARCHITECTURE §6.1).
 
-`run_backfill(config)` pulls 1h bars for both markets and writes **raw** parquet
+`run_backfill(config)` pulls bars (1h; 5m spot) for both markets and writes **raw** parquet
 idempotently. The two markets differ in host, endpoint and payload layout:
 
   - spot  (api.mexc.com):      GET /api/v3/klines?symbol=BTCUSDT&interval=60m&startTime&endTime
@@ -42,8 +42,11 @@ VENDOR_COLUMNS: dict[str, list[str]] = {
     "kline": ["start_time", "open", "high", "low", "close", "volume"],
 }
 
-# Per-market `interval` codes for the 1h bar timeframe.
-SPOT_INTERVALS = {"1m": "1m", "1h": "60m", "1d": "1d"}
+# Per-market `interval` codes per bar timeframe.
+SPOT_INTERVALS = {"1m": "1m", "5m": "5m", "1h": "60m", "1d": "1d"}
+# Bar length per spot interval code: the forward walk sizes its windows and steps in bars. MEXC
+# keeps 1m history for only ~30 days but 5m for at least 90 (probed 2026-10-13).
+_SPOT_BAR_MS = {"1m": 60_000, "5m": 300_000, "60m": 3_600_000, "1d": 86_400_000}
 PERP_INTERVALS = {"1m": "Min1", "1h": "Min60", "1d": "Day1"}
 
 # The contract kline endpoint caps points per call; walk history in bounded windows.
@@ -85,10 +88,10 @@ def _fetch_klines_spot(
 
     MEXC ``/api/v3/klines`` IGNORES a lone ``endTime`` (returns only the latest ~500 rows);
     a bounded ``[startTime, endTime]`` window returns that range (<=~500 rows), so we walk
-    forward window by window. Tuned for 1h bars (~20d/window keeps each page under the cap).
+    forward window by window, 480 bars per window to stay under the cap at any bar length.
     """
-    hour_ms = 3_600_000
-    window = 480 * hour_ms  # ~20 days; MEXC returns at most ~500 rows per call
+    bar_ms = _SPOT_BAR_MS[interval]
+    window = 480 * bar_ms
     rows: list[list] = []
     win_start = start_ms
     while win_start <= end_ms:
@@ -101,7 +104,7 @@ def _fetch_klines_spot(
         if batch:
             rows += batch
             newest = max(int(r[0]) for r in batch)
-            win_start = newest + hour_ms          # continue right after the newest row received
+            win_start = newest + bar_ms           # continue right after the newest row received
         else:
             win_start += window                    # empty window (gap / pre-listing): jump ahead
     if not rows:
