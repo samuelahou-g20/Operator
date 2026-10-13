@@ -88,6 +88,7 @@ from scripts.trade_plot import (  # noqa: E402 - market-data/PnL logic stays out
 )
 from src.adapters.coinroutes.client import CoinRoutesClient  # noqa: E402
 from src.adapters.coinroutes.trade import TERMINAL, CoinRoutesTrader  # noqa: E402
+from src.adapters.errors import AdapterError  # noqa: E402
 from src.common.config import load_config, require_env  # noqa: E402
 from src.common.logging import get_logger  # noqa: E402
 from src.common.pluto import JASON_LEVELS_URL, get as pluto_get  # noqa: E402
@@ -226,6 +227,9 @@ def touch_on(client: CoinRoutesClient, pair: str, side: str,
     try:
         return float(client.touch_price(pair, side, markets=";".join(allowed)))
     except (TypeError, ValueError):
+        return None
+    except AdapterError as e:  # CoinRoutes 404s a book it just listed (SOL-USDT.PERP, 12 Oct)
+        _log.warning("touch_price failed for %s %s: %s", pair, side, e)
         return None
 
 

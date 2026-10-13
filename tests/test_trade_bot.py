@@ -1279,6 +1279,23 @@ def test_binance_pin_falls_back_to_strategy_venues_when_its_price_fails(monkeypa
     assert set(client.markets.split(";")) == {"BINANCEFUTURES", "BYBIT", "HYPERLIQUID"}
 
 
+class _FlakyBinancePriceClient(_PerpBookClient):
+    """Lists BINANCEFUTURES, then 404s the Binance-only PRICE call — the 12 Oct SOL refusal."""
+    def touch_price(self, pair, side, *, probe_usd=25.0, markets=None):
+        if markets == "BINANCEFUTURES":
+            raise AdapterError('CoinRoutes 404: "Not Found"', venue="coinroutes", code=404)
+        return super().touch_price(pair, side, probe_usd=probe_usd, markets=markets)
+
+
+def test_binance_pin_falls_back_when_its_price_call_404s(monkeypatch):
+    monkeypatch.setattr(tb, "_STRATEGY_VENUES", {})   # the per-process venue cache
+    client = _FlakyBinancePriceClient({"BINANCEFUTURES", "BYBIT", "HYPERLIQUID"})
+    plan, err = tb.prepare_order("/trade sol buy size=1k", client, tb.DESKS["mm3"])
+    assert err is None, err
+    assert plan["place_kwargs"]["extra"] is None
+    assert set(client.markets.split(";")) == {"BINANCEFUTURES", "BYBIT", "HYPERLIQUID"}
+
+
 def test_desk_token_traded_as_perp_is_not_pinned_to_binance(monkeypatch):
     monkeypatch.setattr(tb, "_STRATEGY_VENUES", {})   # the per-process venue cache
     desk = tb.DESKS["mm3"]
