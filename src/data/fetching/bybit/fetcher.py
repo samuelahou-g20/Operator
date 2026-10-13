@@ -40,6 +40,24 @@ def _canonical_bars(bars: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def fetch_recent_bars(
+    config: dict, symbol: str, asset_type: str, start: Any, end: Any, timeframe: str = "1h",
+) -> pd.DataFrame:
+    """Recent bars for one Bybit symbol as a ts-indexed float OHLCV frame (no lake write).
+
+    MUST NOT: write the lake (returns the frame for the caller to use)."""
+    shared = {k: v for k, v in config.items() if k != "markets"}
+    market = next(m for m in config["markets"].values() if m["asset_type"] == asset_type)
+    cfg = {**shared, **market}
+    bars = backfill._fetch_klines(cfg["rest_url"], cfg["category"], symbol,
+                                  backfill.INTERVALS[timeframe], backfill._to_ms(start),
+                                  backfill._to_ms(end), RateLimiter(config.get("throttle_per_sec", 0)))
+    if bars.empty:
+        return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
+    out = _canonical_bars(bars.sort_values("start_time")).drop_duplicates("ts")
+    return out.set_index("ts")[["open", "high", "low", "close", "volume"]]
+
+
 def fetch_daily(config: dict, date: Any) -> None:
     """Fetch one day of 1h bars (all markets) + perp funding, then quality-check."""
     day = pd.Timestamp(date).normalize()

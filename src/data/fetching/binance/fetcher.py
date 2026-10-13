@@ -40,14 +40,23 @@ def fetch_recent_bars(
 
     The dashboard's startup catch-up: bridges the lake's last persisted bar to the
     current hour before the live stream takes over. Current-day dumps are not published
-    yet, so this uses REST. Returns an empty frame if nothing comes back.
+    yet, so this uses REST. Pages forward, since one call returns at most 1000 (spot) or
+    1500 (perps) rows. Returns an empty frame if nothing comes back.
     """
     rest_url = config["markets"][market]["rest_url"]
+    path = "/api/v3/klines" if market == "spot" else "/fapi/v1/klines"
     start_ms = int(pd.Timestamp(start, tz="UTC").timestamp() * 1000)
     end_ms = int(pd.Timestamp(end, tz="UTC").timestamp() * 1000)
-    df = _fetch_klines(rest_url, symbol, start_ms, end_ms, interval=timeframe)
-    if df.empty:
-        return df
+    pages = []
+    while start_ms <= end_ms:
+        page = _fetch_klines(rest_url, symbol, start_ms, end_ms, interval=timeframe, path=path)
+        if page.empty:
+            break
+        pages.append(page)
+        start_ms = int(page["open_time"].iloc[-1]) + 1
+    if not pages:
+        return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
+    df = pd.concat(pages, ignore_index=True).drop_duplicates("open_time")
     out = pd.DataFrame({"ts": pd.to_datetime(df["open_time"].astype("int64"), unit="ms")})
     for col in ("open", "high", "low", "close", "volume"):
         out[col] = df[col].astype("float64")

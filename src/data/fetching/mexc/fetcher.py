@@ -41,18 +41,19 @@ def _canonical_bars(bars: pd.DataFrame) -> pd.DataFrame:
 
 
 def _fetch_bars(cfg: dict, symbol: str, start_ms: int, end_ms: int,
-                limiter: RateLimiter) -> pd.DataFrame:
+                limiter: RateLimiter, timeframe: str = "1h") -> pd.DataFrame:
     if cfg["asset_type"] == "perps":
-        return backfill._fetch_klines_perp(cfg["rest_url"], symbol,
-                                           backfill.PERP_INTERVALS["1h"], start_ms, end_ms, limiter)
-    return backfill._fetch_klines_spot(cfg["rest_url"], symbol,
-                                       backfill.SPOT_INTERVALS["1h"], start_ms, end_ms, limiter)
+        return backfill._fetch_klines_perp(cfg["rest_url"], symbol, backfill.PERP_INTERVALS[timeframe],
+                                           start_ms, end_ms, limiter)
+    return backfill._fetch_klines_spot(cfg["rest_url"], symbol, backfill.SPOT_INTERVALS[timeframe],
+                                       start_ms, end_ms, limiter)
 
 
 def fetch_recent_bars(
-    config: dict, symbol: str, asset_type: str, start: Any, end: Any
+    config: dict, symbol: str, asset_type: str, start: Any, end: Any, timeframe: str = "1h",
 ) -> pd.DataFrame:
-    """Recent 1h bars for one MEXC symbol as a ts-indexed float OHLCV frame (no lake write).
+    """Recent bars (1h unless ``timeframe`` says otherwise) for one MEXC symbol as a ts-indexed
+    float OHLCV frame (no lake write).
 
     Picks the spot/perps market by ``asset_type`` and hits the same klines endpoint as the
     backfill. Used by the dashboard's MEXC catch-up to bridge a stale lake up to now so live
@@ -64,7 +65,8 @@ def fetch_recent_bars(
     market = next(m for m in config["markets"].values() if m["asset_type"] == asset_type)
     cfg = {**shared, **market}
     limiter = RateLimiter(config.get("throttle_per_sec", 0))
-    bars = _fetch_bars(cfg, symbol, backfill._to_ms(start), backfill._to_ms(end), limiter)
+    bars = _fetch_bars(cfg, symbol, backfill._to_ms(start), backfill._to_ms(end), limiter,
+                       timeframe)
     if bars.empty:
         return bars
     out = _canonical_bars(bars.sort_values("start_time")).drop_duplicates("ts")

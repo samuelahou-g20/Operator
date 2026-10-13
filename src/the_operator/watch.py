@@ -38,7 +38,7 @@ import time
 from dataclasses import dataclass
 
 from src.common.logging import get_logger
-from src.the_operator import rapid, volume
+from src.the_operator import moves, rapid, volume
 
 _log = get_logger("operator")
 
@@ -326,7 +326,8 @@ def desk_shares(desk: str) -> dict[str, float | None]:
 def start(desk_chats: dict[str, list[str]], say, interval_s: float = INTERVAL_S,
           volume_interval_s: float = VOLUME_INTERVAL_S) -> list[threading.Thread]:
     """Both watches, each on its own thread so a slow volume round never delays the quoting one,
-    posting through one shared ``Hourly`` so a desk gets one message an hour, not one per watch."""
+    posting through one shared ``Hourly`` so a desk gets one message an hour, not one per watch.
+    MM3 also gets the move alert, which posts at once (``moves``)."""
     hourly = Hourly(say)
     threads = []
     for name, worker, every in (("operator-mm-watch", Watcher(desk_chats, say, hourly), interval_s),
@@ -338,6 +339,21 @@ def start(desk_chats: dict[str, list[str]], say, interval_s: float = INTERVAL_S,
                 time.sleep(every)
 
         t = threading.Thread(target=loop, daemon=True, name=name)
+        t.start()
+        threads.append(t)
+    if "mm3" in desk_chats:              # the calibrated tokens are MM3's
+        mover = moves.MoveWatcher(desk_chats["mm3"], say)
+
+        def move_loop() -> None:
+            bar = moves.BAR.total_seconds()
+            while True:
+                try:
+                    mover.round_once()
+                except Exception:  # noqa: BLE001 - a bad round must never kill the watch
+                    _log.exception("move watch round failed")
+                time.sleep(bar - time.time() % bar + 20)   # just after the next bar closes
+
+        t = threading.Thread(target=move_loop, daemon=True, name="operator-move-watch")
         t.start()
         threads.append(t)
     return threads

@@ -230,13 +230,14 @@ def _get_json(rest_url: str, path: str, params: dict) -> Any:
 
 def _fetch_klines(
     rest_url: str, symbol: str, start_ms: int, end_ms: int, interval: str = "1m",
+    path: str = "/fapi/v1/klines",
 ) -> pd.DataFrame:
     """REST klines in the header-less dump column layout (so ETL normalize is identical).
 
     Binance returns kline fields as JSON strings; coerce to numeric so the dtypes match the
     dump path (which pyarrow-parses to numbers) — otherwise merging into an existing float
     parquet fails on a str/double clash."""
-    rows = _get_json(rest_url, "/fapi/v1/klines", {
+    rows = _get_json(rest_url, path, {
         "symbol": symbol.upper(), "interval": interval,
         "startTime": start_ms, "endTime": end_ms, "limit": 1500,
     })

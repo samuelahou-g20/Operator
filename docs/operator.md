@@ -86,8 +86,8 @@ refuses. `OPERATOR_ADMINS` is a third, smaller list — halt/resume only.
 
 ## What it says unprompted
 
-`watch.py` runs two background rounds per served desk. Both **announce sustained changes, not
-states**, and they share one gate (`Hourly`): **one message per desk per clock hour**, sent on the
+`watch.py` runs two background rounds per served desk, plus the MM3 move alert. The two
+**announce sustained changes, not states**, and they share one gate (`Hourly`): **one message per desk per clock hour**, sent on the
 first round after :00 and carrying both watches' news. What fires inside the hour is held and
 folded into that message rather than dropped. A restart says nothing in the chat (the baseline is a
 log line) and waits for the next :00; every post is logged as `watch post <desk>`. Scanning stays
@@ -103,6 +103,13 @@ cadence are deliberately different.
   aggregator sheet and diagnosed per venue only for the coins actually in breach. A coin the desk
   deliberately keeps low is dismissed in chat (`volume_snooze`) and skipped for the rest of the
   UTC day — the exceptions change daily, so there is no list in config.
+
+- **Move alert** (MM3 only, `moves.py`, each 5m bar close): a token whose move, net of BTC, is
+  far beyond its usual size — 5m ≥ 12σ, 15m ≥ 7σ or 1h ≥ 5σ — gets one line at once, outside the
+  hourly gate, then stays quiet for 2h. Calibrated in `research/move_alert` to ~6 alerts a day
+  catching ~87% of big 4h moves. Prices are the venues' public 5m bars (the calibration series);
+  a start seeds 20 days and only bars closing afterwards are scored. Covers the 25 calibrated
+  tokens in `moves.VENUES`; every post is logged as `move post`.
 
 **Whatever is already broken at the first scan after a restart is marked as known and never
 replayed** (`watch.baseline`); only its recovery is reported. Without that, every restart pasted
