@@ -87,10 +87,12 @@ refuses. `OPERATOR_ADMINS` is a third, smaller list — halt/resume only.
 ## What it says unprompted
 
 `watch.py` runs two background rounds per served desk. Both **announce sustained changes, not
-states**, and both are throttled to **at most one message per desk per hour** (`Throttle`); what
-fires inside the hour is held and folded into the next message rather than dropped. Scanning
-stays frequent so a real outage is still found within minutes — detection cadence and
-notification cadence are deliberately different.
+states**, and they share one gate (`Hourly`): **one message per desk per clock hour**, sent on the
+first round after :00 and carrying both watches' news. What fires inside the hour is held and
+folded into that message rather than dropped. A restart says nothing in the chat (the baseline is a
+log line) and waits for the next :00; every post is logged as `watch post <desk>`. Scanning stays
+frequent so a real outage is still found within minutes — detection cadence and notification
+cadence are deliberately different.
 
 - **Quoting watch** (5 min): a strategy must hold a bad state for `STOPPED_ROUNDS` (3) scans
   before it is mentioned, and hold `ok` for as many before the all-clear. A price resting on its

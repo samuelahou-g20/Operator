@@ -18,9 +18,13 @@ for a strategy whose stop was reported, so the two always come in pairs.
 A strategy missing from a scan (its box did not answer) keeps its streak untouched — a box outage
 must neither raise an alarm nor clear one.
 
-The first scan of a desk only establishes a baseline plus one summary line: dozens of strategies
-are deliberately disabled at any time, and listing them on every restart is noise. State is in
-memory, so a restart re-baselines — deliberate, same as ``flow_alert_bot``: the alternative is a
+Both watches speak through one ``Hourly`` gate: a desk's news goes out as ONE message, on the first
+round after each :00, and a start waits for the next :00 like any other news. Two watches on rolling
+hours, plus a fresh throttle and a "now on" line on every restart, read as a stream.
+
+The first scan of a desk only establishes a baseline (a log line, not a post): dozens of
+strategies are deliberately disabled at any time, and listing them on every restart is noise. State
+is in memory, so a restart re-baselines — deliberate, same as ``flow_alert_bot``: the alternative is a
 persisted file that goes stale while the process is down.
 
 MUST NOT: change anything on a box (it only reads), decide policy, or post into a chat that is not
@@ -43,7 +47,6 @@ VOLUME_INTERVAL_S = 15 * 60     # the desk's own cadence for looking at share
 VOLUME_ROUNDS = 2               # ~30 min outside the band before it is worth a message
 MAX_LINES = 12          # a desk-wide event (a venue outage) must not paste 60 lines into the chat
 STOPPED_ROUNDS = 3      # ~15 min in a state, either way, before it is worth a message
-QUIET_S = 60 * 60       # at most one message per desk per watch per hour; the rest is held
 
 
 def _state(s: rapid.Strategy) -> str:
@@ -136,79 +139,85 @@ def render(program: str, went_bad: list[str], recovered: list[str],
     return "\n".join(out)
 
 
-class Throttle:
-    """At most one message per key per ``QUIET_S``; what fires in between is held, not dropped.
+class Hourly:
+    """One message per desk per clock hour, holding both watches' news; nothing is dropped.
 
     Scanning stays frequent so a real outage is detected within minutes, but the chat hears about
-    it at most hourly — detection cadence and notification cadence are different problems."""
+    it once an hour, at :00 — detection cadence and notification cadence are different problems.
+    The hour a desk is first seen in is spent, so a restart waits for the next :00. ``clock`` is
+    injectable so tests can move the hour."""
 
-    def __init__(self, quiet_s: float = QUIET_S) -> None:
-        self.quiet_s = quiet_s
-        self.last: dict[str, float] = {}
+    def __init__(self, say, clock=time.time) -> None:
+        self.say = say
+        self.clock = clock
+        self.sources: list = []              # watchers with take(desk) -> str
+        self.slot: dict[str, int] = {}       # desk -> the clock hour last spent
+        self.lock = threading.Lock()         # both watch threads hold and flush through here
 
-    def due(self, key: str, now: float | None = None) -> bool:
-        now = time.time() if now is None else now
-        return (now - self.last.get(key, 0.0)) >= self.quiet_s
-
-    def sent(self, key: str, now: float | None = None) -> None:
-        self.last[key] = time.time() if now is None else now
+    def flush(self, desk: str, chat_ids: list[str]) -> None:
+        with self.lock:
+            hour = int(self.clock() // 3600)
+            if self.slot.setdefault(desk, hour) >= hour:
+                return
+            self.slot[desk] = hour           # spent even when empty: news at :20 waits for :00
+            text = "\n\n".join(t for t in (s.take(desk) for s in self.sources) if t)
+            if not text:
+                return
+            _log.info("watch post %s to %s: %d lines", desk, chat_ids, len(text.splitlines()))
+            for chat_id in chat_ids:
+                try:
+                    self.say(chat_id, text)
+                except Exception:  # noqa: BLE001 - one unreachable chat must not stop the others
+                    _log.exception("watch could not post to %s", chat_id)
 
 
 class Watcher:
-    """One round per desk per interval. ``say(chat_id, text)`` is the gateway's own sender."""
+    """One round per desk per interval; news is held for ``Hourly``. ``say(chat_id, text)`` is the
+    gateway's own sender."""
 
-    def __init__(self, desk_chats: dict[str, list[str]], say) -> None:
+    def __init__(self, desk_chats: dict[str, list[str]], say, hourly: Hourly | None = None) -> None:
         # {program: [chat ids]} — a desk can be pinned to more than one chat, and each scan is
         # done once and posted to all of them.
         self.desk_chats = desk_chats
-        self.say = say
+        self.hourly = hourly or Hourly(say)
+        self.hourly.sources.append(self)
         self.tracks: dict[str, dict[str, Track]] = {}  # program -> {calculator: Track}
-        self.throttle = Throttle()
         self.held: dict[str, tuple[list[str], list[str]]] = {}   # program -> (bad, recovered)
+        self.latest: dict[str, dict[str, rapid.Strategy]] = {}   # program -> last scan
 
     def round_once(self) -> None:
         for program, chat_ids in self.desk_chats.items():
-            try:
-                after, strategies, warnings = scan_desk(program)
-            except Exception:  # noqa: BLE001 - a bad round must never kill the watch
-                _log.exception("mm watch scan failed for %s", program)
-                continue
-            if not after:
-                _log.warning("mm watch: %s returned no strategies (%s)", program, warnings)
-                continue
-            first = program not in self.tracks
-            tracks = self.tracks.setdefault(program, {})
-            went_bad, recovered = settle(tracks, after)
-            if first:
-                baseline(tracks)
-                # Baseline: say where things stand in one line, then only transitions from here.
-                bad = sum(1 for st in after.values() if st != "ok")
-                _log.info("mm watch baseline %s: %d strategies, %d not quoting", program,
-                          len(after), bad)
-                if bad:
-                    self._post(chat_ids,
-                               f"🔔 **MM watch · {program}** now on: {len(after)} strategies, "
-                               f"**{bad} not quoting**. Ask `/operator mm status` for the list; "
-                               f"I will report changes from here.")
-                continue
-            bad, rec = self.held.get(program, ([], []))
-            bad, rec = bad + went_bad, rec + recovered
-            if not self.throttle.due(program):
-                self.held[program] = (bad, rec)        # hold it; the hour is not up
-                continue
-            self.held[program] = ([], [])
-            text = render(program, [c for c in bad if c in strategies],
-                          [c for c in rec if c in strategies], strategies)
-            if text:
-                self._post(chat_ids, text)
-                self.throttle.sent(program)
+            self._scan(program)
+            self.hourly.flush(program, chat_ids)
 
-    def _post(self, chat_ids: list[str], text: str) -> None:
-        for chat_id in chat_ids:
-            try:
-                self.say(chat_id, text)
-            except Exception:  # noqa: BLE001 - one unreachable chat must not stop the others
-                _log.exception("mm watch could not post to %s", chat_id)
+    def _scan(self, program: str) -> None:
+        try:
+            after, strategies, warnings = scan_desk(program)
+        except Exception:  # noqa: BLE001 - a bad round must never kill the watch
+            _log.exception("mm watch scan failed for %s", program)
+            return
+        if not after:
+            _log.warning("mm watch: %s returned no strategies (%s)", program, warnings)
+            return
+        first = program not in self.tracks
+        tracks = self.tracks.setdefault(program, {})
+        went_bad, recovered = settle(tracks, after)
+        if first:
+            baseline(tracks)
+            _log.info("mm watch baseline %s: %d strategies, %d not quoting", program,
+                      len(after), sum(1 for st in after.values() if st != "ok"))
+            return
+        with self.hourly.lock:
+            bad, rec = self.held.get(program, ([], []))
+            self.held[program] = (bad + went_bad, rec + recovered)
+            self.latest[program] = strategies
+
+    def take(self, program: str) -> str:
+        """The held news as one block, cleared ("" when there is none). Caller holds the lock."""
+        bad, rec = self.held.pop(program, ([], []))
+        strategies = self.latest.get(program, {})
+        return render(program, [c for c in bad if c in strategies],
+                      [c for c in rec if c in strategies], strategies)
 
 
 def render_volume(desk: str, flagged: list[tuple[str, float, str, str | None]]) -> str:
@@ -246,11 +255,11 @@ class VolumeWatcher:
     skipped entirely — including its diagnosis, so a deliberate exception costs nothing."""
 
     def __init__(self, desk_chats: dict[str, list[str]], say, shares_fn=None,
-                 brief_fn=None) -> None:
+                 brief_fn=None, hourly: Hourly | None = None) -> None:
         self.desk_chats = desk_chats
-        self.say = say
+        self.hourly = hourly or Hourly(say)
+        self.hourly.sources.append(self)
         self.tracks: dict[str, dict[str, Track]] = {}
-        self.throttle = Throttle()
         self.held: dict[str, list[tuple]] = {}
         self._shares = shares_fn or volume.shares
         self._brief = brief_fn or volume.brief
@@ -270,43 +279,41 @@ class VolumeWatcher:
 
     def round_once(self) -> None:
         for desk, chat_ids in self.desk_chats.items():
-            try:
-                rows = desk_shares(desk)
-            except Exception:  # noqa: BLE001 - a bad round must never kill the watch
-                _log.exception("volume watch could not read the %s sheet", desk)
+            self._scan(desk)
+            self.hourly.flush(desk, chat_ids)
+
+    def take(self, desk: str) -> str:
+        """The held breaches as one block, cleared ("" when there are none). Caller holds the lock."""
+        return render_volume(desk, self.held.pop(desk, []))
+
+    def _scan(self, desk: str) -> None:
+        try:
+            rows = desk_shares(desk)
+        except Exception:  # noqa: BLE001 - a bad round must never kill the watch
+            _log.exception("volume watch could not read the %s sheet", desk)
+            return
+        if not rows:
+            return
+        states = {token: ("low" if share < volume.LOW else
+                          "high" if share > volume.HIGH else "ok")
+                  for token, share in rows.items() if share is not None}
+        first = desk not in self.tracks
+        tracks = self.tracks.setdefault(desk, {})
+        breached, _cleared = settle(tracks, states, rounds=VOLUME_ROUNDS)
+        if first:
+            baseline(tracks)
+            _log.info("volume watch baseline %s: %d coins, %d outside the band", desk,
+                      len(states), sum(1 for s in states.values() if s != "ok"))
+            return
+        flagged = []
+        for token in breached:
+            if volume.is_snoozed(desk, token):
                 continue
-            if not rows:
-                continue
-            states = {token: ("low" if share < volume.LOW else
-                              "high" if share > volume.HIGH else "ok")
-                      for token, share in rows.items() if share is not None}
-            first = desk not in self.tracks
-            tracks = self.tracks.setdefault(desk, {})
-            breached, _cleared = settle(tracks, states, rounds=VOLUME_ROUNDS)
-            if first:
-                baseline(tracks)
-                _log.info("volume watch baseline %s: %d coins, %d outside the band", desk,
-                          len(states), sum(1 for s in states.values() if s != "ok"))
-                continue
-            flagged = []
-            for token in breached:
-                if volume.is_snoozed(desk, token):
-                    continue
-                cause, fix = self._worst_venue(desk, token)
-                if cause:
-                    flagged.append((token, rows[token], cause, fix))
-            flagged = self.held.pop(desk, []) + flagged
-            if not self.throttle.due(desk):
-                self.held[desk] = flagged
-                continue
-            text = render_volume(desk, flagged)
-            if text:
-                self.throttle.sent(desk)
-                for chat_id in chat_ids:
-                    try:
-                        self.say(chat_id, text)
-                    except Exception:  # noqa: BLE001
-                        _log.exception("volume watch could not post to %s", chat_id)
+            cause, fix = self._worst_venue(desk, token)
+            if cause:
+                flagged.append((token, rows[token], cause, fix))
+        with self.hourly.lock:
+            self.held[desk] = self.held.get(desk, []) + flagged
 
 
 def desk_shares(desk: str) -> dict[str, float | None]:
@@ -318,11 +325,13 @@ def desk_shares(desk: str) -> dict[str, float | None]:
 
 def start(desk_chats: dict[str, list[str]], say, interval_s: float = INTERVAL_S,
           volume_interval_s: float = VOLUME_INTERVAL_S) -> list[threading.Thread]:
-    """Both watches, each on its own thread so a slow volume round never delays the quoting one."""
+    """Both watches, each on its own thread so a slow volume round never delays the quoting one,
+    posting through one shared ``Hourly`` so a desk gets one message an hour, not one per watch."""
+    hourly = Hourly(say)
     threads = []
-    for name, worker, every in (("operator-mm-watch", Watcher(desk_chats, say), interval_s),
-                                ("operator-volume-watch", VolumeWatcher(desk_chats, say),
-                                 volume_interval_s)):
+    for name, worker, every in (("operator-mm-watch", Watcher(desk_chats, say, hourly), interval_s),
+                                ("operator-volume-watch",
+                                 VolumeWatcher(desk_chats, say, hourly=hourly), volume_interval_s)):
         def loop(worker=worker, every=every) -> None:
             while True:
                 worker.round_once()
