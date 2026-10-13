@@ -126,7 +126,9 @@ def read_orders(client: CoinRoutesClient, asset: str, strategy: str) -> pd.DataF
     df = pd.concat(frames, ignore_index=True)
     if "uid" in df.columns:
         df = df.drop_duplicates(subset="uid")
-    return df[df["strategy"] == strategy]
+    # Case-insensitive: CoinRoutes returns the roster's MM-C209_VTHO-GAMMA-J as mm-c209_vtho-gamma-j,
+    # and an exact match showed "No open orders" over 4 live VTHO quotes.
+    return df[df["strategy"].astype(str).str.casefold() == str(strategy).casefold()]
 
 
 def recent_fills(client: CoinRoutesClient, asset: str, n: int) -> pd.DataFrame:
@@ -466,7 +468,7 @@ def token_blocks(df: pd.DataFrame, desk: dict) -> list[tuple[str, list[list[str]
 def hedge_blocks(df: pd.DataFrame, desk: dict) -> list[tuple[str, list[list[str]]]]:
     """The desk's futures-book open orders as (token, rows) blocks — every open order whose
     strategy is the desk perp book, grouped by base token (alphabetical)."""
-    df = df[df["strategy"] == desk["perp"]].copy()
+    df = df[df["strategy"].astype(str).str.casefold() == str(desk["perp"]).casefold()].copy()
     if df.empty:
         return []
     df = df.assign(base=df["currency_pair"].str.split("-").str[0])

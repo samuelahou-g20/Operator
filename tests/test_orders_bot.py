@@ -114,3 +114,22 @@ def test_a_token_with_no_configured_strategy_is_not_filtered_away():
     desk = {"tokens": ["QUID"], "order": ["QUID"], "gamma": {}}
     (_token, rows), = ob.token_blocks(_quid_frame(), desk)
     assert len(rows) == 3 and ob.foreign_orders(_quid_frame(), desk).empty
+
+
+def test_the_per_asset_view_matches_the_strategy_in_either_case():
+    """/orders vtho said "No open orders" over 4 live quotes: the roster has MM-C209_VTHO-GAMMA-J,
+    CoinRoutes returned mm-c209_vtho-gamma-j, and this filter alone compared case-sensitively."""
+    class _C:
+        def client_orders(self, currency=None, order_status=None):
+            return _quid_frame().assign(uid=range(3))
+    df = ob.read_orders(_C(), "QUID", "MM-H018_QUID-GAMMA-J")
+    assert sorted(df["limit_price"]) == ["0.0535", "0.1"]     # both cases kept, OTC dropped
+
+
+def test_the_hedge_book_matches_the_perp_strategy_in_either_case():
+    df = pd.DataFrame([
+        {"currency_pair": "HNT-USDT.PERP", "side": "sell", "limit_price": "0.47",
+         "quantity": "5000", "quantity_currency": "USDT", "strategy": "mm3-futurestrading-ha-j",
+         "pct_executed": 0.0},
+    ])
+    assert ob.hedge_blocks(df, {"perp": "MM3-FUTURESTRADING-HA-J"})
