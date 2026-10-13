@@ -302,6 +302,25 @@ def strategy_venues(client: CoinRoutesClient, strategy: str) -> list[str]:
     return venues
 
 
+def prime_strategy_venues(client: CoinRoutesClient, strategies: list[str]) -> None:
+    """Fill the ``strategy_venues`` cache for ``strategies`` from ONE strategy listing.
+
+    Each lookup pages the whole listing (~5 s), so a whole-book view resolving 26 tokens one by one
+    after a restart spent ~130 s here. A failure leaves the cache as it was: the per-strategy path
+    then runs exactly as before."""
+    missing = [s for s in strategies if s not in _STRATEGY_VENUES]
+    if not missing:
+        return
+    try:
+        venue_map = client.strategy_venue_map()
+    except Exception as e:  # noqa: BLE001 - priming is an optimisation, never a refusal
+        _log.warning("strategy_venue_map failed: %s", e)
+        return
+    for s in missing:
+        if venue_map.get(s.lower()):
+            _STRATEGY_VENUES[s] = venue_map[s.lower()]
+
+
 # Strategy configs still name Coinbase by its old brand, but the cost_calculator book labels it
 # COINBASE, so the intersection in touch_on/mid_on came back empty: GWEI-USD (Coinbase-only) was
 # refused with "no book on the allowed venues" on a strategy that lists `gdax`.

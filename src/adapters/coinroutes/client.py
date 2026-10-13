@@ -183,10 +183,14 @@ class CoinRoutesClient:
         mid (a crossed -17% book). Matching by name is case-insensitive because the desk's roster
         mixes cases for the same strategy (``MM-C371_CC-GAMMA-J`` vs ``mm-c402_aztec-gamma-j``).
         """
-        for rec in self._get_all("/api/strategies/", {}):
-            if str(rec.get("name", "")).lower() == strategy.lower():
-                return [str(v).lower() for v in (rec.get("exchanges") or [])]
-        return []
+        return self.strategy_venue_map().get(strategy.lower(), [])
+
+    def strategy_venue_map(self) -> dict[str, list[str]]:
+        """``{strategy name (lowercase): its configured venues (lowercase)}`` for every strategy on
+        the account, from one paginated listing (~5 s for ~230 strategies). Use it to resolve many
+        strategies at once instead of calling ``strategy_exchanges`` per strategy."""
+        return {str(rec.get("name", "")).lower(): [str(v).lower() for v in (rec.get("exchanges") or [])]
+                for rec in self._get_all("/api/strategies/", {})}
 
     def book_venues(self, symbol: str, side: str, *, probe_usd: float = 25.0) -> set[str]:
         """The venues that appear on ``symbol``'s book at all (UPPERCASE), from one call.

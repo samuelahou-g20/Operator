@@ -44,6 +44,7 @@ from scripts.trade_bot import (  # noqa: E402 - canonical MM3 maps + the shared 
     PERP_STRATEGY,
     STRATEGY,
     price_venues,
+    prime_strategy_venues,
 )
 from scripts.trade_plot import (  # noqa: E402 - one asset, several currency codes
     canonical_token,
@@ -228,10 +229,11 @@ def ref_venues(client: CoinRoutesClient, cfg: dict, tokens: list[str],
     real 0.1189. Delegates to ``trade_bot.price_venues`` rather than filtering on the strategy alone,
     because for a shared ticker the strategy's OWN list is already wrong — mm-c420_ai-gamma-j
     carries binance, where 'AI' is a different asset — and it also translates spot venue labels for
-    a ``.PERP`` pair. It caches per strategy, so calling it per token is cheap.
+    a ``.PERP`` pair. Its cache is primed for every strategy first, so the per-token calls are cheap.
 
     An empty list means "unresolved": ``spot_refs`` then reads the unrestricted mid, which is the
     old behaviour — wrong on a poisoned book, but a shown ref beats a blank column."""
+    prime_strategy_venues(client, [s for s in (strategy_of(cfg, t) for t in tokens) if s])
     out: dict[str, list[str]] = {}
     for tok in tokens:
         strat = strategy_of(cfg, tok)

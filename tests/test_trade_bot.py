@@ -600,6 +600,43 @@ def test_refuses_when_the_strategy_venues_cannot_be_resolved():
     tb._STRATEGY_VENUES.clear()
 
 
+def test_prime_strategy_venues_resolves_many_strategies_from_one_listing(monkeypatch):
+    """A whole-book view resolved each token's strategy with its own ~5 s listing (~130 s for 26
+    tokens). Priming reads the listing once, matches names case-insensitively, and leaves an
+    unknown strategy uncached so the per-strategy path still refuses it."""
+    monkeypatch.setattr(tb, "_STRATEGY_VENUES", {})
+
+    class _C:
+        calls = 0
+
+        def strategy_venue_map(self):
+            _C.calls += 1
+            return {"mm-c371_cc-gamma-j": ["bybit", "okex"], "mm-dodo-gamma-j": ["mexc"]}
+
+        def strategy_exchanges(self, strategy):
+            raise AssertionError("primed strategies must not be looked up one by one")
+
+    c = _C()
+    tb.prime_strategy_venues(c, ["MM-C371_CC-GAMMA-J", "mm-dodo-gamma-j", "mm-unknown"])
+    assert _C.calls == 1
+    assert tb.strategy_venues(c, "MM-C371_CC-GAMMA-J") == ["bybit", "okex"]
+    assert tb.strategy_venues(c, "mm-dodo-gamma-j") == ["mexc"]
+    assert "mm-unknown" not in tb._STRATEGY_VENUES
+    tb.prime_strategy_venues(c, ["mm-dodo-gamma-j"])
+    assert _C.calls == 1                                  # already cached: no second listing
+
+
+def test_prime_strategy_venues_failure_leaves_the_cache_alone(monkeypatch):
+    monkeypatch.setattr(tb, "_STRATEGY_VENUES", {})
+
+    class _C:
+        def strategy_venue_map(self):
+            raise RuntimeError("CoinRoutes 503")
+
+    tb.prime_strategy_venues(_C(), ["mm-dodo-gamma-j"])
+    assert tb._STRATEGY_VENUES == {}
+
+
 # --------------------------------------------------------------------------- #
 # AIGENSYN — the Binance leg of the same asset, on the same gamma account
 # --------------------------------------------------------------------------- #
