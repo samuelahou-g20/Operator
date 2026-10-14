@@ -258,3 +258,15 @@ def test_set_param_refuses_when_someone_else_moved_the_field(monkeypatch):
     monkeypatch.setattr(execution.rapid, "push_param", lambda *a: pushed.append(a))
     reply = execution.execute(_set_pending())[0]
     assert pushed == [] and "changed to 9.0 since the preview" in reply and "0 of 1" in reply
+
+
+def test_a_trader_is_built_for_every_trade_bot_desk_with_its_own_key(monkeypatch):
+    """trade_bot desks the Operator does not serve (MM4, OTC) once raised KeyError here, which
+    failed every placement on every desk."""
+    execution._traders.clear()
+    monkeypatch.setattr(execution, "CoinRoutesTrader", FakeTrader)
+    monkeypatch.setattr(execution, "require_env", lambda var: f"key:{var}")
+    built = execution.traders()
+    assert set(built) == set(tb.DESKS)
+    assert all(built[d].api_token == f"key:{cfg['cr_token_env']}" for d, cfg in tb.DESKS.items())
+    execution._traders.clear()

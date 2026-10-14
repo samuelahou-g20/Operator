@@ -26,13 +26,20 @@ from __future__ import annotations
 from scripts import trade_bot as tb
 from src.adapters.coinroutes.client import CoinRoutesClient
 from src.adapters.coinroutes.trade import CoinRoutesTrader
+from src.common.config import require_env
 from src.common.logging import get_logger
 from src.the_operator import notes, policy, rapid, volume
-from src.the_operator.desk import cr_token
 from src.the_operator.policy import Pending
 
 _log = get_logger("operator")
 _traders: dict[str, CoinRoutesTrader] = {}
+
+
+def cr_token(desk: str) -> str:
+    """A trading desk's CoinRoutes key from trade_bot's own desk table, as /trade reads it. The
+    Operator's desk list only covers the desks it serves; looking a trade_bot desk up there broke
+    every placement the day trade_bot gained one (MM4)."""
+    return require_env(tb.DESKS[desk]["cr_token_env"])
 
 
 def traders() -> dict[str, CoinRoutesTrader]:
