@@ -490,6 +490,8 @@ def main() -> None:
     offset = telegram.drain_backlog(api)   # so a restart doesn't replay old commands
     from src.the_operator import warm       # deferred: imports the advisory tool chain
     warm.start()                            # macro + LS ranking kept warm for advisory requests
+    threading.Thread(target=execution.prime_venues, daemon=True,   # first order skips a ~5 s listing
+                     name="operator-prime-venues").start()
     watch_chats: dict[str, list[str]] = defaultdict(list)
     for chat_id in sorted(served):
         watch_chats[pins[chat_id]].append(chat_id)

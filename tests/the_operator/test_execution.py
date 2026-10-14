@@ -270,3 +270,24 @@ def test_a_trader_is_built_for_every_trade_bot_desk_with_its_own_key(monkeypatch
     assert set(built) == set(tb.DESKS)
     assert all(built[d].api_token == f"key:{cfg['cr_token_env']}" for d, cfg in tb.DESKS.items())
     execution._traders.clear()
+
+
+def test_prime_venues_lists_each_key_once_for_every_desk_book(monkeypatch):
+    primed: dict[str, list[str]] = {}
+    monkeypatch.setattr(execution, "require_env", lambda var: f"key:{var}")
+    monkeypatch.setattr(execution, "CoinRoutesClient", lambda api_token: api_token)
+    monkeypatch.setattr(tb, "prime_strategy_venues",
+                        lambda client, names: primed.setdefault(client, []).extend(names))
+    execution.prime_venues()
+    keys = {cfg["cr_token_env"] for cfg in tb.DESKS.values()}
+    assert set(primed) == {f"key:{k}" for k in keys}                  # one listing per key
+    mm3 = primed[f"key:{tb.DESKS['mm3']['cr_token_env']}"]
+    assert tb.DESKS["mm3"]["strategy"]["DNX"] in mm3 and tb.DESKS["mm3"]["perp_strategy"] in mm3
+    assert len(mm3) == len(set(mm3))
+
+
+def test_prime_venues_survives_a_missing_key(monkeypatch):
+    def require_env(var):
+        raise KeyError(var)
+    monkeypatch.setattr(execution, "require_env", require_env)
+    execution.prime_venues()                                            # logs, never raises

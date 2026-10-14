@@ -8,6 +8,10 @@ otherwise sent at the LIMIT THE HUMAN CONFIRMED through ``trade_bot.place_prepar
 status a typed ``/trade`` would use (or ``policy.MONEY_STATUS`` when a phase forces one). A
 ``place_scalp`` re-reads the mid, refuses on the same dislocation rule, then applies the
 PREVIEWED ladder through ``trade_bot.apply_ladder``. Cancels go through ``trade_bot.handle_cancel``.
+A ``move_order`` re-reads the order (still open, still at the price the human saw), re-reads the
+touch when it was a join (same dislocation rule), then modifies the limit in place. If CoinRoutes
+refuses the modify, the order is left where it was: rebuilding an arbitrary order from its record
+could place something different from what was resting, so the trader decides what happens next.
 ``fills_tick`` is one pass of ``trade_bot.poll_pending`` over the Operator's live orders.
 
 An ``mm_rebound`` goes to the rapid-engine boxes instead: each target's CURRENT ``price_boundaries``
@@ -25,7 +29,7 @@ from __future__ import annotations
 
 from scripts import trade_bot as tb
 from src.adapters.coinroutes.client import CoinRoutesClient
-from src.adapters.coinroutes.trade import CoinRoutesTrader
+from src.adapters.coinroutes.trade import TERMINAL, CoinRoutesTrader
 from src.common.config import require_env
 from src.common.logging import get_logger
 from src.the_operator import notes, policy, rapid, volume
@@ -48,6 +52,21 @@ def traders() -> dict[str, CoinRoutesTrader]:
         if desk not in _traders:
             _traders[desk] = CoinRoutesTrader(api_token=cr_token(desk))
     return _traders
+
+
+def prime_venues() -> None:
+    """Fill trade_bot's strategy-venue cache for every trading desk's books, one CoinRoutes listing
+    per key. The first order on a strategy after a restart otherwise waits ~5 s for that listing;
+    this fetches exactly what that order would have, only earlier. Run once, off the main thread."""
+    by_key: dict[str, set[str]] = {}
+    for cfg in tb.DESKS.values():
+        names = {*cfg["strategy"].values(), cfg.get("perp_strategy"), cfg.get("spot_strategy")}
+        by_key.setdefault(cfg["cr_token_env"], set()).update(n for n in names if n)
+    for env, names in by_key.items():
+        try:
+            tb.prime_strategy_venues(CoinRoutesClient(api_token=require_env(env)), sorted(names))
+        except Exception:  # noqa: BLE001 - priming only saves time; an order still resolves itself
+            _log.exception("could not prime strategy venues on %s", env)
 
 
 def fills_tick(api: str, fills: dict) -> None:
@@ -89,6 +108,8 @@ def execute(p: Pending) -> tuple[str, dict | None]:
             return _scalp(p, token), None
         if p.tool == "cancel_order":
             return tb.handle_cancel(p.proposal["order_id"], traders()[p.ctx.desk]), None
+        if p.tool == "move_order":
+            return _move(p, token)
         return f"❌ {p.tool} has no execution path in phase {policy.PHASE}", None
     except Exception as exc:  # noqa: BLE001 - report over chat, never kill the gateway worker
         _log.exception("execution of %s (%s) failed", p.tool, p.nonce)
@@ -137,6 +158,34 @@ def _scalp(p: Pending, token: str) -> str:
     sides = tb.apply_ladder(pr["want"], client, traders()[p.ctx.desk], base=pr["base"], pair=pr["pair"],
                             strategy=pr["strategy"], pxv=pr["pxv"], venues=pr["venues"])
     return tb.render_scalper_text(pr["head"], sides, pr["kmap"])
+
+
+def _move(p: Pending, token: str) -> tuple[str, dict | None]:
+    pr, trader = p.proposal, traders()[p.ctx.desk]
+    oid, limit = pr["order_id"], pr["limit_price"]
+    rec = trader.get_order(oid)
+    status = str(rec.get("order_status"))
+    if status in TERMINAL:
+        return f"❌ not moved — order `{oid}` is {status}.", None
+    if float(rec.get("limit_price") or 0) != float(pr["from_price"]):
+        return (f"❌ not moved — order `{oid}` now rests at {rec.get('limit_price')}, not the "
+                f"{pr['from_price']} you saw. Ask again for a fresh preview."), None
+    if pr["join"]:
+        opp = "sell" if pr["side"] == "buy" else "buy"
+        fresh = tb.touch_on(CoinRoutesClient(api_token=token), pr["pair"], opp, pr["venues"])
+        if not policy.limit_drift_ok(limit, fresh):
+            return (f"❌ not moved — the touch is now {fresh} vs {limit} at the preview (more than "
+                    f"{policy.LIMIT_DRIFT_MAX:.0%}, or no price). Ask again for a fresh preview."), None
+    _log.warning("EXECUTE %s by %s (%s) on %s: move %s %s -> %s", p.nonce, p.ctx.user_name,
+                 p.ctx.user_id, p.ctx.desk, oid, pr["from_price"], limit)
+    try:
+        trader.modify(oid, limit_price=limit)
+    except Exception as exc:  # noqa: BLE001 - modify is best-effort at CoinRoutes; say so, don't replace
+        return (f"❌ CoinRoutes refused the move: {str(exc)[:200]}
+Order `{oid}` still rests at "
+                f"{pr['from_price']}. Cancel and place a new one if you still want it moved."), None
+    return (f"✅ Moved order `{oid}` {pr['from_price']} → {limit}",
+            {"oid": oid, "base": pr["base"], "side": pr["side"]})
 
 
 def _rebound(p: Pending) -> str:
