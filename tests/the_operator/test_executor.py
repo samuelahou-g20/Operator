@@ -118,3 +118,26 @@ def test_handler_exception_becomes_error_text(tmp_path):
     assert out == "ERROR: v failed: RuntimeError: pluto down"
     res = j.find("r1")[1]
     assert res["ok"] is False and "pluto down" in res["error"]
+
+
+def test_with_post_a_read_tools_image_and_card_reach_the_chat_at_once(tmp_path):
+    j, sink, extras, posted = Journal(tmp_path), [], [], []
+    att = Attachment("agg.png", b"png", "photo")
+    spec = _spec("agg", lambda c, a: ToolResult("table", [att], verbatim=True, card="📊 card"))
+    tool = executor.build_tools([spec], CTX, sink, j, lambda: True, None, None, extras,
+                                post=lambda atts, cards: posted.append((atts, cards)))[0]
+    out = tool.call({"a": "x"})
+    assert posted == [([att], ["📊 card"])] and sink == [] and extras == []
+    assert "'agg.png' is ALREADY in the chat" in out and "will be attached" not in out
+    assert [e["kind"] for e in j.find("r1")] == ["tool_call", "tool_result", "posted"]
+
+
+def test_with_post_a_money_tool_keeps_its_card_path(tmp_path):
+    att, cards, sink, posted = Attachment("p.png", b"png", "photo"), [], [], []
+    spec = ToolSpec("place_order", "d", MONEY_SCHEMA, Risk.MONEY,
+                    lambda c, a: ToolResult("🟢 preview", [att], proposal={"kind": "x"}))
+    tool = executor.build_tools([spec], TRADER, sink, Journal(tmp_path), lambda: True,
+                                lambda *a: "ab12cd", cards,
+                                post=lambda atts, cs: posted.append(atts))[0]
+    tool.call({"reason": "sam asked"})
+    assert posted == [] and sink == [att] and cards == ["🟢 preview"]

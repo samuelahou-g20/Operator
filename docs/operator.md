@@ -21,9 +21,10 @@ Telegram ──/operator …──▶ gateway (auth: served chat ∧ desk pin; a
                              │ proposes tool calls
                              ▼
                            executor ─▶ policy.check ─▶ handler (a bot's fetch+render)
-                             │ journal every verdict/result; divert PNG/CSV to the reply
+                             │ journal every verdict/result; a READ tool's PNG/CSV/card is
+                             │ posted to the chat at once, a money card waits for the reply
                              ▼
-                           gateway sends text, then attachments
+                           gateway sends the model's read (then any money card)
 ```
 
 The model never executes anything and never holds a credential; it only emits tool calls.
@@ -230,6 +231,11 @@ untrusted content; the extraction prompt says so.
 A read tool can mark its result `verbatim` (`ToolResult.verbatim`, used by `buzz`): the gateway
 sends that card to the chat exactly as built, before the model's reply, and the model is told to
 add only its own read. Different from money cards, which end the request without a model turn.
+
+Every READ tool's images, files and verbatim card go to the chat **the moment the tool returns**
+(`executor.Post`), not after the model's reply: the trader reads the table while the model writes
+its two-to-four-line take, which used to be the longest wait of a routine request. The model is told
+the table is already in the chat, so it answers the question instead of walking through it.
 
 `recent_chat` exists because the bot's privacy mode is off: the gateway records what traders say
 in served chats (3h, memory only, never journaled) and the model reads it on demand rather than

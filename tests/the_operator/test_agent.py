@@ -63,7 +63,7 @@ def test_run_journals_turns_mirrors_history_and_diverts_attachments(tmp_path):
     assert kinds == ["turn", "tool_call", "tool_result", "turn"] or \
         kinds == ["tool_call", "tool_result", "turn", "turn"]
     assert cap["model"] == agent.MODEL and cap["max_iterations"] == agent.MAX_ITERATIONS
-    assert cap["system"][0]["cache_control"] == {"type": "ephemeral"}
+    assert cap["system"][0]["cache_control"] == {"type": "ephemeral", "ttl": "1h"}
     assert "Desk: MM3." in cap["system"][1]["text"]
 
 
@@ -133,5 +133,21 @@ def test_system_prompt_carries_the_clock_outside_the_cached_block(tmp_path):
     with it in the CACHED block, every request would miss the prompt cache."""
     from datetime import datetime, timezone
     blocks = agent.system_blocks(CTX, "Desk: MM3.")
-    assert blocks[0]["cache_control"] == {"type": "ephemeral"} and "Current time" not in blocks[0]["text"]
+    assert blocks[0]["cache_control"] == {"type": "ephemeral", "ttl": "1h"} and "Current time" not in blocks[0]["text"]
     assert f"{datetime.now(timezone.utc):%Y-%m-%d}" in blocks[1]["text"] and "UTC" in blocks[1]["text"]
+
+
+def test_a_posted_table_reaches_the_chat_before_the_models_reply(tmp_path):
+    seen: list[str] = []
+    att = Attachment("a.png", b"x", "photo")
+
+    def handler(c, a):
+        seen.append("tool")
+        return ToolResult("table", [att])
+    specs = [ToolSpec("agg", "d", SCHEMA, Risk.READ, handler)]
+    client = _client([("tool", "agg"), ("text", "PV is 1.2m", "end_turn")], {})
+    reply = agent.run(client, CTX, "show agg", [], specs, "", Journal(tmp_path), lambda: True,
+                      post=lambda atts, cards: seen.append(f"posted {atts[0].filename}"))
+    seen.append("reply")
+    assert seen == ["tool", "posted a.png", "reply"]
+    assert reply.attachments == [] and reply.text == "PV is 1.2m"     # not sent a second time

@@ -38,7 +38,12 @@ VERBATIM_NOTE = ("\n\n[The card part of this result has ALREADY been sent to the
                  "items matter for this desk, following any instruction in the notes above — or a "
                  "single line saying the card stands alone.]")
 
+POSTED_NOTE = ("\n[{kind} '{filename}' is ALREADY in the chat and the requester is looking at it. "
+               "Do not walk through it: answer what they asked, or give the two to four points that "
+               "matter.]")
+
 Propose = Callable[[Context, str, dict], str]   # (ctx, tool name, proposal) -> nonce
+Post = Callable[[list[Attachment], list[str]], None]   # (attachments, cards) -> in the chat now
 
 
 def available(specs: list[ToolSpec], desk: str) -> list[ToolSpec]:
@@ -49,14 +54,18 @@ def available(specs: list[ToolSpec], desk: str) -> list[ToolSpec]:
 
 def build_tools(specs: list[ToolSpec], ctx: Context, sink: list[Attachment], journal: Journal,
                 is_armed: Callable[[], bool], propose: Propose | None = None,
-                cards: list[str] | None = None, extras: list[str] | None = None) -> list[BetaFunctionTool]:
+                cards: list[str] | None = None, extras: list[str] | None = None,
+                post: Post | None = None) -> list[BetaFunctionTool]:
     """``cards`` collects money previews that END the request (delivered instead of a paraphrase
     turn); ``extras`` collects ``verbatim`` read results the gateway sends as-is BEFORE the model's
-    own reply, which then only adds what the card lacks."""
+    own reply, which then only adds what the card lacks. With ``post``, a READ tool's images and
+    verbatim card go to the chat the moment it returns instead: the trader reads the table while
+    the model is still writing its take, which used to be the longest wait of a routine request."""
     # strict=True only on MONEY tools: the API rejects the whole request as "Schema is too complex"
     # when every one of the 17 tools is strict, and schema-exact arguments matter most where an
     # argument becomes an order. Read handlers already answer bad user input with a ❌ text.
-    return [BetaFunctionTool(_wrap(s, ctx, sink, journal, is_armed, propose, cards, extras), name=s.name,
+    return [BetaFunctionTool(_wrap(s, ctx, sink, journal, is_armed, propose, cards, extras, post),
+                             name=s.name,
                              description=s.description, input_schema=s.input_schema,
                              strict=True if s.risk is Risk.MONEY else None)
             for s in specs]
@@ -64,7 +73,8 @@ def build_tools(specs: list[ToolSpec], ctx: Context, sink: list[Attachment], jou
 
 def _wrap(spec: ToolSpec, ctx: Context, sink: list[Attachment], journal: Journal,
           is_armed: Callable[[], bool], propose: Propose | None,
-          cards: list[str] | None, extras: list[str] | None = None) -> Callable[..., str]:
+          cards: list[str] | None, extras: list[str] | None = None,
+          post: Post | None = None) -> Callable[..., str]:
     def run(**args) -> str:
         verdict = policy.check(spec, args, ctx, armed=is_armed())
         journal.write("tool_call", ctx.request_id, tool=spec.name, args=args,
@@ -81,7 +91,9 @@ def _wrap(spec: ToolSpec, ctx: Context, sink: list[Attachment], journal: Journal
                           error=f"{type(exc).__name__}: {exc}"[:500])
             return f"ERROR: {spec.name} failed: {type(exc).__name__}: {exc}"
         ms = round((time.monotonic() - t0) * 1000)
-        sink.extend(res.attachments)
+        live = post is not None and spec.risk is not Risk.MONEY and (res.attachments or res.verbatim)
+        if not live:
+            sink.extend(res.attachments)
         nonce = None
         if verdict.mode == "confirm" and res.proposal is not None:
             if propose is None:
@@ -90,11 +102,20 @@ def _wrap(spec: ToolSpec, ctx: Context, sink: list[Attachment], journal: Journal
         journal.write("tool_result", ctx.request_id, tool=spec.name, ok=True, ms=ms,
                       mode=verdict.mode, text=clip(res.text), proposal=res.proposal, nonce=nonce,
                       attachments=describe_attachments(res.attachments))
-        note = "".join(f"\n[{a.kind} '{a.filename}' will be attached to your reply]"
-                       for a in res.attachments)
-        if res.verbatim and extras is not None:
-            extras.append(res.card if res.card is not None else res.text)
-            note += VERBATIM_NOTE
+        if live:
+            post(res.attachments, [res.card if res.card is not None else res.text] if res.verbatim else [])
+            journal.write("posted", ctx.request_id, tool=spec.name,
+                          attachments=describe_attachments(res.attachments), card=res.verbatim)
+            note = "".join(POSTED_NOTE.format(kind=a.kind, filename=a.filename)
+                           for a in res.attachments)
+            if res.verbatim:
+                note += VERBATIM_NOTE
+        else:
+            note = "".join(f"\n[{a.kind} '{a.filename}' will be attached to your reply]"
+                           for a in res.attachments)
+            if res.verbatim and extras is not None:
+                extras.append(res.card if res.card is not None else res.text)
+                note += VERBATIM_NOTE
         if verdict.mode == "dry_run":
             note += DRY_RUN_NOTE
             if res.proposal is not None and cards is not None:

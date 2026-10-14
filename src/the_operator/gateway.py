@@ -436,7 +436,7 @@ class Gateway:
             try:
                 reply = agent.run(self.client, ctx, text, hist.messages(now), self.specs,
                                   desk.desk_facts(ctx.desk), self.journal, self.is_armed,
-                                  self.propose)
+                                  self.propose, post=lambda atts, cards: self.post(ctx, atts, cards))
             except Exception as exc:  # noqa: BLE001 - report over chat, never kill the worker
                 _log.exception("request %s failed", ctx.request_id)
                 self.journal.write("error", ctx.request_id, error=f"{type(exc).__name__}: {exc}"[:500])
@@ -447,13 +447,11 @@ class Gateway:
             self.deliver(ctx, reply.text, reply.attachments, reply.extras)
             self.send_confirm_buttons(ctx)
 
-    def deliver(self, ctx: Context, text: str, attachments: list[Attachment],
-                extras: list[str] | None = None) -> None:
-        for card in extras or []:                        # verbatim tool cards first, then the model's take
+    def post(self, ctx: Context, attachments: list[Attachment], cards: list[str] = ()) -> None:
+        """Cards, then attachments, into the requester's chat — mid-request for a read tool's output."""
+        for card in cards:
             for part in chunks(card):
                 self._say(ctx.chat_id, part)
-        for part in chunks(text):
-            self._say(ctx.chat_id, part)
         for a in attachments:
             if a.kind == "photo":
                 self._send_photo(self.api, ctx.chat_id, a.data, caption=a.caption)
@@ -462,6 +460,13 @@ class Gateway:
                                     mime=a.mime)
             else:
                 self._send_document(self.api, ctx.chat_id, a.data, a.filename, caption=a.caption)
+
+    def deliver(self, ctx: Context, text: str, attachments: list[Attachment],
+                extras: list[str] | None = None) -> None:
+        self.post(ctx, [], extras or [])                 # verbatim tool cards first, then the model's take
+        for part in chunks(text):
+            self._say(ctx.chat_id, part)
+        self.post(ctx, attachments)
         self.journal.write("reply", ctx.request_id, chars=len(text), attachments=len(attachments))
 
 

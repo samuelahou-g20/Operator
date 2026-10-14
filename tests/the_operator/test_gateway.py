@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from src.the_operator import gateway
-from src.the_operator.contract import Context, Risk, ToolResult, ToolSpec
+from src.the_operator import agent, gateway
+from src.the_operator.contract import Attachment, Context, Risk, ToolResult, ToolSpec
 from src.the_operator.journal import Journal
 
 SCHEMA = {"type": "object", "properties": {}, "required": [], "additionalProperties": False}
@@ -349,3 +349,19 @@ def test_the_user_gate_does_not_block_admins_from_halting(tmp_path):
     gw.users = {"7"}
     gw.handle_update(_upd("-1", "/operator halt", user="999"))
     assert "not on the Operator's user list" in sent[-1][1] and gw.armed
+
+
+def test_ask_posts_a_tools_table_before_the_models_reply(tmp_path, monkeypatch):
+    sent = []
+    gw = _gw(tmp_path, sent)
+    gw._send_photo = lambda api, chat_id, data, caption=None: sent.append((chat_id, f"photo {caption}"))
+
+    def run(client, ctx, text, history, specs, facts, journal, is_armed, propose, post=None):
+        post([Attachment("agg.png", b"png", "photo", caption="MM3 · 33 rows")], [])
+        return agent.Reply("PV is up on QI", [], [{"role": "user", "content": text}], "end_turn")
+    monkeypatch.setattr(gateway.agent, "run", run)
+    monkeypatch.setattr(gateway.desk, "desk_facts", lambda d: "")
+    gw.ask(Context("r1", "mm3", "-1", "7", "u7"), "show agg")
+    texts = [t for _c, t in sent]
+    assert texts[0].startswith("Working on it")
+    assert texts[1:] == ["photo MM3 · 33 rows", "PV is up on QI"]

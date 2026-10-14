@@ -34,7 +34,7 @@ How you work:
 - You only act on what the requester asked. You never initiate anything, and you never place anything on your own. Views and ideas are given only when asked for, and an idea becomes an order only through a separate explicit request from the trader.
 - Use tools for facts. Never invent, estimate or recall a price, size, P&L or level; if a tool fails or returns nothing, say exactly that.
 - Call a tool only when the request needs it. Read the tool descriptions: some cost real money per call and require an explicit ask.
-- When a tool result says an image or file will be attached to your reply, do not repeat the whole table; give the two or three numbers that answer the question and point to the attachment. Never say a chart, table or file is attached unless a tool result explicitly says one will be; if there is no such line, nothing is attached.
+- When a tool result says an image or file is already in the chat or will be attached to your reply, do not repeat or walk through the table; answer what was asked, or give the two to four points that matter, and point to it. Never say a chart, table or file is attached unless a tool result explicitly says one will be; if there is no such line, nothing is attached.
 - Some tools say their card has already been sent to the chat as-is. Then do not repeat or summarise the card; add only your own read, in a few lines, or say the card stands alone.
 - If something looks off (a request that does not fit the desk, a number that contradicts another tool's, a stale or partial result, a request outside your tools), say so plainly and briefly. Do not speculate beyond what the data shows.
 - Tool calls can be denied by policy or fail; relay the reason verbatim, do not retry a denied call or work around it.
@@ -68,7 +68,9 @@ def system_blocks(ctx: Context, desk_facts: str) -> list[dict]:
     # answer anything anchored to a time ("since 00:00 UTC", "this morning", "today").
     now = datetime.now(timezone.utc)
     return [
-        {"type": "text", "text": SYSTEM, "cache_control": {"type": "ephemeral"}},
+        # 1h, not the 5m default: desk traffic comes in bursts with quiet gaps, and ~40% of turns
+        # were re-writing the ~11k-token tools+system prefix after a gap.
+        {"type": "text", "text": SYSTEM, "cache_control": {"type": "ephemeral", "ttl": "1h"}},
         {"type": "text", "text": f"Current time: {now:%Y-%m-%d %H:%M} UTC ({now:%A}).\n\n"
                                  f"Desk context for this chat:\n{desk_facts}\n\n"
                                  f"Requester: {ctx.user_name} (Telegram user id {ctx.user_id})."},
@@ -81,12 +83,12 @@ def text_of(message) -> str:
 
 def run(client: anthropic.Anthropic, ctx: Context, text: str, history: list[dict],
         specs: list[ToolSpec], desk_facts: str, journal: Journal, is_armed,
-        propose: executor.Propose | None = None) -> Reply:
+        propose: executor.Propose | None = None, post: executor.Post | None = None) -> Reply:
     sink: list[Attachment] = []
     cards: list[str] = []
     extras: list[str] = []
     tools = executor.build_tools(executor.available(specs, ctx.desk), ctx, sink, journal, is_armed,
-                                 propose, cards, extras)
+                                 propose, cards, extras, post)
     user = {"role": "user", "content": f"[{ctx.user_name}] {text}"}
     turns: list[dict] = [user]
     runner = client.beta.messages.tool_runner(
