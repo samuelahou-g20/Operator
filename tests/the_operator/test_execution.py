@@ -291,3 +291,70 @@ def test_prime_venues_survives_a_missing_key(monkeypatch):
         raise KeyError(var)
     monkeypatch.setattr(execution, "require_env", require_env)
     execution.prime_venues()                                            # logs, never raises
+
+
+def _move_pending(**over):
+    pr = {"order_id": "cid-1", "pair": "BSV-USDT", "side": "buy", "venues": ["binance"],
+          "from_price": "17.8796", "limit_price": "18.05", "join": True, "base": "BSV", **over}
+    return policy.Pending("ab12cd", CTX, "move_order", pr, 0.0)
+
+
+class MoveTrader(FakeTrader):
+    order = {"order_status": "open", "limit_price": "17.8796"}
+    refuse: Exception | None = None
+
+    def get_order(self, oid):
+        return dict(MoveTrader.order)
+
+    def modify(self, oid, **fields):
+        if MoveTrader.refuse is not None:
+            raise MoveTrader.refuse
+        FakeTrader.calls.append({"modify": oid, **fields})
+
+
+def _wire_move(monkeypatch, touch=18.05, order=None, refuse=None):
+    _wire(monkeypatch)
+    MoveTrader.order = order or {"order_status": "open", "limit_price": "17.8796"}
+    MoveTrader.refuse = refuse
+    monkeypatch.setattr(execution, "CoinRoutesTrader", MoveTrader)
+    seen = {}
+
+    def touch_on(client, pair, side, venues):
+        seen["args"] = (pair, side, venues)
+        return touch
+    monkeypatch.setattr(tb, "touch_on", touch_on)
+    return seen
+
+
+def test_move_modifies_in_place_at_the_confirmed_limit_and_watches_the_fill(monkeypatch):
+    seen = _wire_move(monkeypatch, touch=18.06)          # touch ticked; the confirmed limit stands
+    reply, tracked = execution.execute(_move_pending())
+    assert FakeTrader.calls == [{"modify": "cid-1", "limit_price": "18.05"}]
+    assert seen["args"] == ("BSV-USDT", "sell", ["binance"])      # a bid re-reads the best bid
+    assert reply == "✅ Moved order `cid-1` 17.8796 → 18.05"
+    assert tracked == {"oid": "cid-1", "base": "BSV", "side": "buy"}
+
+
+def test_move_refuses_an_order_that_changed_or_closed_since_the_preview(monkeypatch):
+    _wire_move(monkeypatch, order={"order_status": "open", "limit_price": "17.5"})
+    reply, tracked = execution.execute(_move_pending())
+    assert reply.startswith("❌ not moved") and "17.5" in reply and tracked is None
+    _wire_move(monkeypatch, order={"order_status": "closed", "limit_price": "17.8796"})
+    reply, _ = execution.execute(_move_pending())
+    assert "is closed" in reply and FakeTrader.calls == []
+
+
+def test_move_refuses_a_dislocated_touch_but_an_explicit_limit_skips_the_touch(monkeypatch):
+    _wire_move(monkeypatch, touch=20.0)
+    reply, _ = execution.execute(_move_pending())
+    assert reply.startswith("❌ not moved — the touch is now 20.0") and FakeTrader.calls == []
+    _wire_move(monkeypatch, touch=None)
+    reply, _ = execution.execute(_move_pending(join=False))
+    assert reply.startswith("✅ Moved")
+
+
+def test_a_refused_modify_leaves_the_order_alone(monkeypatch):
+    _wire_move(monkeypatch, refuse=RuntimeError("CoinRoutes modify failed 400: not modifiable"))
+    reply, tracked = execution.execute(_move_pending())
+    assert "refused the move" in reply and "still rests at 17.8796" in reply and tracked is None
+    assert FakeTrader.calls == []                      # no cancel, no replacement order

@@ -59,6 +59,10 @@ scans every module but `execution.py` for that name. A handler returns a preview
   - `place_scalp`: re-reads the mid, refuses on the same 5% rule, then applies the **previewed**
     ladder through `trade_bot.apply_ladder` (reconciliation: unlisted resting levels are cancelled).
   - `cancel_order`: `trade_bot.handle_cancel`.
+  - `move_order`: re-reads the order (still open, still at the previewed price), re-reads the
+    touch for a join (same 5% rule), then modifies the limit in place and watches it for fills. A
+    refused modify leaves the order where it was; it is never silently cancelled and replaced.
+    `open_orders` gives the model each order's `client_order_id`, so "the closest bid" resolves.
 
 The requester must be on the desk's `TELEGRAM_TRADE_TRADERS*` allowlist (read from
 `trade_bot.DESKS`, one source) and every money call carries a `reason`.
@@ -173,6 +177,7 @@ sheet, on the desk's instruction: the formulas change rarely, the parameters cha
 | `place_order` (confirm) | `trade_bot.prepare_order` (parse → caps → venues → touch → limit/max-post), then `place_prepared`; fills via `poll_pending` | mm3 mm2 treasury |
 | `place_scalp` (confirm) | `trade_bot.prepare_scalper` (mid, JASON sigma, 1..n σ levels), then `apply_ladder` | mm3 mm2 treasury |
 | `cancel_order` (confirm) | `trade_bot.handle_cancel` | mm3 mm2 treasury |
+| `move_order` (confirm) | re-prices one resting order in place (`CoinRoutesTrader.modify`); `limit` null = join the best price on its own side | mm3 mm2 treasury |
 | `mm_rebound` (confirm) | re-centres a token's `price_boundaries` across every venue (`rapid.push_param`) | any |
 | `mm_set_param` (confirm) | one field of one quoting parameter group on the live strategies | any |
 | **write** | | |

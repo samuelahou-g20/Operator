@@ -181,8 +181,7 @@ def _move(p: Pending, token: str) -> tuple[str, dict | None]:
     try:
         trader.modify(oid, limit_price=limit)
     except Exception as exc:  # noqa: BLE001 - modify is best-effort at CoinRoutes; say so, don't replace
-        return (f"❌ CoinRoutes refused the move: {str(exc)[:200]}
-Order `{oid}` still rests at "
+        return (f"❌ CoinRoutes refused the move: {str(exc)[:200]}\nOrder `{oid}` still rests at "
                 f"{pr['from_price']}. Cancel and place a new one if you still want it moved."), None
     return (f"✅ Moved order `{oid}` {pr['from_price']} → {limit}",
             {"oid": oid, "base": pr["base"], "side": pr["side"]})

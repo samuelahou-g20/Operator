@@ -1,4 +1,4 @@
-"""MONEY tools: ``place_order``, ``place_scalp``, ``cancel_order``.
+"""MONEY tools: ``place_order``, ``place_scalp``, ``cancel_order``, ``move_order``.
 
 Each handler BUILDS its action through ``scripts/trade_bot.py``'s own ``prepare_*`` functions —
 the same parsing, per-token/USD caps, venue rails and touch pricing a typed ``/trade`` goes
@@ -6,12 +6,14 @@ through — and returns a human-readable preview plus the built action in ``Tool
 The handler is the same in every phase; whether the proposal is dry-run, held for the requester's
 confirm, or executed is ``executor``/``execution``'s decision from ``policy``, never this module's.
 
-MUST NOT: import or construct ``CoinRoutesTrader``, call ``place``/``cancel``/``apply_ladder`` or
+MUST NOT: import or construct ``CoinRoutesTrader``, call ``place``/``cancel``/``modify``/``apply_ladder`` or
 any other order-writing path, hold caps or rails (they live in trade_bot and are exercised, not
 copied, here), or send anything to Telegram. A test scans this module's source for those names.
 """
 
 from __future__ import annotations
+
+import pandas as pd
 
 from scripts import trade_bot as tb
 from src.adapters.coinroutes.client import CoinRoutesClient
@@ -268,4 +270,91 @@ CANCEL_ORDER = ToolSpec(
 )
 
 
-TOOLS: list[ToolSpec] = [PLACE_ORDER, PLACE_SCALP, CANCEL_ORDER]
+# --------------------------------------------------------------------------- #
+# move_order
+# --------------------------------------------------------------------------- #
+def _desk_books(desk: dict) -> set[str]:
+    names = {*desk["strategy"].values(), desk.get("perp_strategy"), desk.get("spot_strategy")}
+    return {str(n).casefold() for n in names if n}
+
+
+def _open_order(client: CoinRoutesClient, oid: str) -> dict | None:
+    df = client.client_orders(order_status="open")
+    if df is None or df.empty:
+        return None
+    for rec in df.to_dict("records"):
+        if str(tb._order_ref({k: v for k, v in rec.items() if pd.notna(v)})) == oid:
+            return rec
+    return None
+
+
+def _move_order(ctx: Context, args: dict) -> ToolResult:
+    desk = tb.DESKS.get(ctx.desk)
+    if desk is None:
+        return _refusal(f"{ctx.desk} is not a trading desk")
+    oid = str(args["order_id"]).strip()
+    if not oid:
+        return _refusal("order_id must not be empty")
+    client = _client(ctx)
+    order = _open_order(client, oid)
+    if order is None:
+        return _refusal(f"no open order `{oid}`: it filled, was cancelled, or the id is wrong")
+    if str(order["strategy"]).casefold() not in _desk_books(desk):
+        return _refusal(f"order `{oid}` is on {order['strategy']}, not a {ctx.desk} book")
+    pair, side, strategy = str(order["currency_pair"]), str(order["side"]), str(order["strategy"])
+    base = pair.split("-")[0]
+    old = str(order["limit_price"])
+    venues = tb.price_venues(client, strategy, base, pair.upper().endswith(".PERP"))
+    if not venues:
+        return _refusal(f"no venues known for {strategy}; refusing to price blind")
+    # Our own side of the book: a bid joins the best bid (touch_on "sell" side), an offer the best ask.
+    best = tb.touch_on(client, pair, "sell" if side == "buy" else "buy", venues)
+    if best is None:
+        return _refusal(f"no price for {pair} on {', '.join(venues)}")
+    best_label = "best bid" if side == "buy" else "best offer"
+    join = args["limit"] is None
+    limit = f"{best:.10g}" if join else f"{args['limit']:.10g}"
+    if float(limit) == float(old):
+        return _refusal(f"order `{oid}` already rests at `{old}`")
+    qty, unit = float(order["quantity"]), str(order["quantity_currency"])
+    notional = qty if unit in tb.QUOTE_CURRENCIES else qty * float(limit)
+    size = _usd(qty) if unit in tb.QUOTE_CURRENCIES else f"{qty:,.10g} {base} (~{_usd(notional)})"
+    headline = f"↕ MOVE {'BID' if side == 'buy' else 'OFFER'} {base} · {size}"
+    rows = [("Order", f"`{oid}`"), ("Book", strategy), ("Pair", pair),
+            ("From", f"`{old}`"),
+            ("To", f"`{limit}` ({f'joins the {best_label}' if join else 'your limit'})"),
+            (best_label.capitalize(), f"`{best:.10g}`")]
+    notes = []
+    if (note := policy.four_eyes_note(notional, ctx.desk)) is not None:
+        notes.append(note)
+    proposal = {"kind": "move_order", "headline": headline, "order_id": oid, "pair": pair,
+                "side": side, "venues": venues, "from_price": old, "limit_price": limit,
+                "join": join, "base": base, "notional_usd": notional, "reason": args["reason"]}
+    return ToolResult(card(headline, rows, notes), proposal=proposal)
+
+
+MOVE_ORDER = ToolSpec(
+    name="move_order",
+    description=(
+        "Move one of the desk's resting CoinRoutes orders to a new limit price, in place (same "
+        "order id, size and book). order_id: the Id column from open_orders. limit: the new price, "
+        "or null to JOIN the best price on the order's own side (a bid goes to the best bid, an "
+        "offer to the best offer); null is the default for 'move it to market / to the touch / up "
+        "to best'. Give an explicit limit only when the trader names a price or asks to cross or "
+        "take. reason: the requester's words. Call open_orders first to get the id when the "
+        "trader describes the order instead of naming it (e.g. 'the closest bid')."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {"order_id": {"type": "string"}, "limit": {"type": ["number", "null"]},
+                       "reason": {"type": "string"}},
+        "required": ["order_id", "limit", "reason"],
+        "additionalProperties": False,
+    },
+    risk=Risk.MONEY,
+    handler=_move_order,
+    desks=TRADING_DESKS,
+)
+
+
+TOOLS: list[ToolSpec] = [PLACE_ORDER, PLACE_SCALP, CANCEL_ORDER, MOVE_ORDER]

@@ -133,3 +133,15 @@ def test_the_hedge_book_matches_the_perp_strategy_in_either_case():
          "pct_executed": 0.0},
     ])
     assert ob.hedge_blocks(df, {"perp": "MM3-FUTURESTRADING-HA-J"})
+
+
+def test_the_models_text_carries_each_orders_id_but_the_image_rows_do_not():
+    """The Operator could not move "the closest BSV bid" because the text it read had no ids."""
+    df = _quid_frame().assign(client_order_id=["c-a", "c-b", "c-c"], uid=["u-a", "u-b", "u-c"])
+    desk = {"tokens": ["QUID"], "order": ["QUID"], "gamma": {"QUID": "mm-h018_quid-gamma-j"}}
+    blocks = ob.token_blocks(df, desk)
+    assert "0.0535 10,000 USDT - c-c" in ob._blocks_text(blocks)
+    rows, _rule = ob._column(blocks, {"QUID": 0.06}, {})
+    assert all("c-a" not in r and "c-c" not in r for r in rows)
+    fdf, _n = ob.orders_frame(df[df["strategy"].str.casefold() == "mm-h018_quid-gamma-j"], "QUID")
+    assert list(fdf["Id"]) == ["c-a", "c-c"]

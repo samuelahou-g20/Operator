@@ -43,6 +43,7 @@ from scripts.mm2_trade_log_bot import MM2_STRATEGIES  # noqa: E402 - canonical M
 from scripts.trade_bot import (  # noqa: E402 - canonical MM3 maps + the shared venue rail
     PERP_STRATEGY,
     STRATEGY,
+    _order_ref,
     price_venues,
     prime_strategy_venues,
 )
@@ -261,7 +262,8 @@ def spot_refs(tokens: list[str], suffix: str = "-USDT", cr_token: str | None = N
 
 
 def _rows(sub: pd.DataFrame, asset: str, gamma: str | None = None) -> list[list[str]]:
-    """[Side, Price, Size, Fill] rows for one side, sorted by descending limit price.
+    """[Side, Price, Size, Fill, Id] rows for one side, sorted by descending limit price. ``Id`` is
+    what cancel/modify address the order by; the images leave it out, the Operator's text needs it.
 
     ``gamma`` is the asset's own market-making strategy. An order on any OTHER strategy is tagged
     with it in the Fill column: the whole-book view groups purely by token, so an OTC or manual
@@ -283,7 +285,7 @@ def _rows(sub: pd.DataFrame, asset: str, gamma: str | None = None) -> list[list[
         # different strategy and tag the desk's own ladder as foreign.
         if gamma and strat and strat.casefold() != str(gamma).casefold():
             fill = f"{fill} · {strat}"
-        out.append([str(r["side"]), price, size, fill])
+        out.append([str(r["side"]), price, size, fill, str(_order_ref(r.dropna()) or "—")])
     return out
 
 
@@ -291,7 +293,7 @@ def orders_frame(df: pd.DataFrame, asset: str) -> tuple[pd.DataFrame, int]:
     """Display frame (offers desc then bids desc) + the number of offer rows (for the spread rule)."""
     offers = _rows(df[df["side"] == "sell"], asset)
     bids = _rows(df[df["side"] == "buy"], asset)
-    fdf = pd.DataFrame(offers + bids, columns=["Side", "Price", "Size", "Fill"])
+    fdf = pd.DataFrame(offers + bids, columns=["Side", "Price", "Size", "Fill", "Id"])
     return fdf, len(offers)
 
 
@@ -307,7 +309,7 @@ def render_orders_image(asset: str, fdf: pd.DataFrame, n_offers: int, ref: float
     stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     refcol = [_pxfmt(ref), f"js+2 {_pxfmt(up)}", f"js-2 {_pxfmt(dn)}"]
     body = [[sd, px, _pct_from_ref(px, ref), sz, fl]    # [Side, Price, % Ref, Size, Fill]
-            for sd, px, sz, fl in fdf.values.tolist()]
+            for sd, px, sz, fl, _id in fdf.values.tolist()]
     n = max(len(body), len(refcol))
     body += [["", "", "", "", ""]] * (n - len(body))        # pad so the js lines have cells
     values = [[refcol[i] if i < len(refcol) else "", *body[i]] for i in range(n)]
@@ -446,7 +448,7 @@ def foreign_orders(df: pd.DataFrame, desk: dict) -> pd.DataFrame:
 
 
 def token_blocks(df: pd.DataFrame, desk: dict) -> list[tuple[str, list[list[str]]]]:
-    """The desk's spot open orders as (token, rows) blocks; rows = [Side, Price, Size, Fill],
+    """The desk's spot open orders as (token, rows) blocks; rows = [Side, Price, Size, Fill, Id],
     offers desc then bids desc. Tokens in the desk's list order.
 
     Only the desk's OWN strategy per token; ``foreign_orders`` carries the rest."""
@@ -498,7 +500,7 @@ def _column(blocks: list[tuple[str, list[list[str]]]], refs: dict[str, float | N
         n = max(len(brows), len(refcol))
         padded = brows + [["", "", "", ""]] * (n - len(brows))   # pad so the js lines have cells
         for i, r in enumerate(padded):
-            r5 = [r[0], r[1], _pct_from_ref(r[1], refs.get(t)), *r[2:]] if r else ["", "", "", "", ""]
+            r5 = [r[0], r[1], _pct_from_ref(r[1], refs.get(t)), *r[2:4]] if r else ["", "", "", "", ""]
             rows.append([t if i == 0 else "", refcol[i] if i < len(refcol) else "", *r5])
         rule.add(len(rows) - 1)
     return rows, rule
@@ -579,7 +581,7 @@ def render_all_image(blocks: list[tuple[str, list[list[str]]]], refs: dict[str, 
 # --------------------------------------------------------------------------- #
 def _blocks_text(blocks: list[tuple[str, list[list[str]]]]) -> str:
     """Plain-text rendering of (token, rows) blocks — same rows the PNG renderer draws, one line
-    per token then its [Side, Price, Size, Fill] rows, for a model (not a chat) to read."""
+    per token then its [Side, Price, Size, Fill, Id] rows, for a model (not a chat) to read."""
     lines = []
     for tok, rows in blocks:
         lines.append(tok)

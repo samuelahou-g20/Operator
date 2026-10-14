@@ -26,10 +26,11 @@ def _offline(monkeypatch):
 
 def test_module_has_no_order_writing_path():
     src = inspect.getsource(trading).split('"""', 2)[2]   # code only: the docstring names them on purpose
-    for forbidden in ("CoinRoutesTrader", "apply_ladder", ".place(", ".cancel(", "execute_plan"):
+    for forbidden in ("CoinRoutesTrader", "apply_ladder", ".place(", ".cancel(", ".modify(",
+                      "execute_plan"):
         assert forbidden not in src, forbidden
     assert all(t.risk is Risk.MONEY for t in trading.TOOLS)
-    assert len({t.name for t in trading.TOOLS}) == 3
+    assert len({t.name for t in trading.TOOLS}) == 4
 
 
 def test_order_command_mirrors_a_typed_trade():
@@ -110,3 +111,64 @@ def test_cancel_preview():
                             "order_id": "abc-1", "notional_usd": 0.0, "reason": "pull it"}
     assert res.text.startswith("**🗑 CANCEL order abc-1**") and "• **Order** abc-1" in res.text
     assert trading.CANCEL_ORDER.handler(CTX, {"order_id": "", "reason": "x"}).text.startswith("❌")
+
+
+class _Book:
+    """Open orders as CoinRoutes lists them: a BSV bid on mm3's gamma book, and an OTC order."""
+    def __init__(self, rows):
+        self.rows = rows
+
+    def client_orders(self, order_status=None):
+        import pandas as pd
+        return pd.DataFrame(self.rows)
+
+
+BSV_BID = {"client_order_id": "cid-1", "uid": "u-1", "currency_pair": "BSV-USDT", "side": "buy",
+           "limit_price": "17.8796", "quantity": "20000", "quantity_currency": "USDT",
+           "strategy": "MM-C118-BSV-GAMMA-J"}
+MOVE = {"order_id": "cid-1", "limit": None, "reason": "jm: move bsv bid to market"}
+
+
+def _book(monkeypatch, *rows):
+    monkeypatch.setattr(trading, "CoinRoutesClient", lambda api_token: _Book(list(rows)))
+
+
+def test_move_order_joins_the_best_bid_by_default(monkeypatch):
+    _book(monkeypatch, BSV_BID)
+    res = trading.MOVE_ORDER.handler(CTX, MOVE)
+    assert res.text.startswith("**↕ MOVE BID BSV · $20,000**")
+    assert "• **From** `17.8796`" in res.text and "• **To** `0.49` (joins the best bid)" in res.text
+    pr = res.proposal                 # touch_on(..., "sell") is the best bid (0.49 in the fixture)
+    assert pr["kind"] == "move_order" and pr["order_id"] == "cid-1" and pr["join"] is True
+    assert pr["from_price"] == "17.8796" and pr["limit_price"] == "0.49" and pr["side"] == "buy"
+    assert pr["venues"] == ["binance"] and pr["notional_usd"] == 20000.0
+
+
+def test_move_order_an_offer_joins_the_best_offer_and_an_explicit_limit_is_kept(monkeypatch):
+    _book(monkeypatch, {**BSV_BID, "side": "sell", "limit_price": "21.79"})
+    res = trading.MOVE_ORDER.handler(CTX, MOVE)
+    assert res.proposal["limit_price"] == "0.5" and "joins the best offer" in res.text
+    res = trading.MOVE_ORDER.handler(CTX, {**MOVE, "limit": 18.1})
+    assert res.proposal["limit_price"] == "18.1" and res.proposal["join"] is False
+    assert "(your limit)" in res.text
+
+
+def test_move_order_finds_a_ui_order_by_its_client_order_id_not_its_uid(monkeypatch):
+    _book(monkeypatch, BSV_BID)
+    assert trading.MOVE_ORDER.handler(CTX, {**MOVE, "order_id": "u-1"}).proposal is None
+    assert trading.MOVE_ORDER.handler(CTX, MOVE).proposal is not None
+
+
+def test_move_order_refuses_an_unknown_id_and_another_books_order(monkeypatch):
+    _book(monkeypatch, {**BSV_BID, "strategy": "OTC-GENERAL-J"})
+    res = trading.MOVE_ORDER.handler(CTX, MOVE)
+    assert res.proposal is None and "OTC-GENERAL-J, not a mm3 book" in res.text
+    _book(monkeypatch)
+    res = trading.MOVE_ORDER.handler(CTX, MOVE)
+    assert res.proposal is None and "no open order `cid-1`" in res.text
+
+
+def test_move_order_refuses_when_already_at_the_price(monkeypatch):
+    _book(monkeypatch, {**BSV_BID, "limit_price": "0.49"})
+    res = trading.MOVE_ORDER.handler(CTX, MOVE)
+    assert res.proposal is None and "already rests" in res.text
