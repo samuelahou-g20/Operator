@@ -145,3 +145,21 @@ def test_the_models_text_carries_each_orders_id_but_the_image_rows_do_not():
     assert all("c-a" not in r and "c-c" not in r for r in rows)
     fdf, _n = ob.orders_frame(df[df["strategy"].str.casefold() == "mm-h018_quid-gamma-j"], "QUID")
     assert list(fdf["Id"]) == ["c-a", "c-c"]
+
+
+def test_the_whole_book_shows_usd_and_usdc_spot_books_but_not_perps():
+    """APR's MM4 ladder sits on APR-USD only; a USDT-only filter dropped it from /orders."""
+    desk = {"tokens": ["APR"], "order": ["APR"], "gamma": {"APR": "MM-C369_APR-GAMMA-J"}}
+    df = pd.DataFrame([
+        {"currency_pair": pair, "side": "sell", "limit_price": px, "quantity": "1000",
+         "quantity_currency": "USD", "strategy": strat, "pct_executed": 0.0}
+        for pair, px, strat in [("APR-USD", "0.3", "MM-C369_APR-GAMMA-J"),
+                                ("APR-USDC", "0.31", "MM-C369_APR-GAMMA-J"),
+                                ("APR-USDT", "0.32", "MM-C369_APR-GAMMA-J"),
+                                ("APR-USDT.PERP", "0.33", "MM-C369_APR-GAMMA-J"),
+                                ("APR-EUR", "0.34", "MM-C369_APR-GAMMA-J"),
+                                ("APR-USD", "0.35", "OTC-GENERAL-J")]])
+    (_token, rows), = ob.token_blocks(df, desk)
+    assert sorted(r[1] for r in rows) == ["0.3", "0.31", "0.32"]
+    foreign = ob.foreign_orders(df, desk)
+    assert list(foreign["limit_price"]) == ["0.35"]

@@ -42,6 +42,7 @@ import matplotlib.pyplot as plt  # noqa: E402 - must follow backend selection
 from scripts.mm2_trade_log_bot import MM2_STRATEGIES  # noqa: E402 - canonical MM2 token map
 from scripts.trade_bot import (  # noqa: E402 - canonical MM3 maps + the shared venue rail
     PERP_STRATEGY,
+    QUOTE_CURRENCIES,
     STRATEGY,
     _order_ref,
     price_venues,
@@ -439,11 +440,16 @@ def _own_strategy(df: pd.DataFrame, desk: dict) -> pd.Series:
     return want.isna() | (strat.astype(str).str.casefold() == want)
 
 
+# Spot books on any dollar quote: APR's MM4 ladder sits on APR-USD only, and a USDT-only filter
+# dropped it from the whole-book view. Perps (`-USDT.PERP`) stay out.
+_SPOT_SUFFIXES = tuple(f"-{q}" for q in QUOTE_CURRENCIES)
+
+
 def foreign_orders(df: pd.DataFrame, desk: dict) -> pd.DataFrame:
     """Open orders on this desk's tokens that belong to ANOTHER strategy — never silently
     dropped: the whole-book caption says how many there are and whose they are."""
     df = df.assign(base=df["currency_pair"].str.split("-").str[0].map(canonical_token))
-    df = df[df["base"].isin(desk["tokens"]) & df["currency_pair"].str.endswith("-USDT")]
+    df = df[df["base"].isin(desk["tokens"]) & df["currency_pair"].str.endswith(_SPOT_SUFFIXES)]
     return df[~_own_strategy(df, desk)]
 
 
@@ -455,7 +461,7 @@ def token_blocks(df: pd.DataFrame, desk: dict) -> list[tuple[str, list[list[str]
     # canonical_token folds a venue-specific code back onto the desk's token (AIGENSYN -> AI),
     # otherwise that venue's leg is not in `desk["tokens"]` and drops out of the whole-book view.
     df = df.assign(base=df["currency_pair"].str.split("-").str[0].map(canonical_token))
-    df = df[df["base"].isin(desk["tokens"]) & df["currency_pair"].str.endswith("-USDT")]
+    df = df[df["base"].isin(desk["tokens"]) & df["currency_pair"].str.endswith(_SPOT_SUFFIXES)]
     df = df[_own_strategy(df, desk)]
     present = set(df["base"])
     blocks = []
