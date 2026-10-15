@@ -1056,24 +1056,26 @@ def test_jwap_start_refused_when_candles_fail(monkeypatch):
 
 
 def test_jwap_children_go_through_the_trade_path(jason_stub, monkeypatch):
-    seen = {"prep": [], "place": []}
-    real_prep, real_place = tb.prepare_order, tb.place_prepared
+    """Every child is priced and capped by prepare_order, then placed with exactly its
+    place_kwargs under our own client_order_id (so a retry or restart can look it up)."""
+    seen = {"prep": []}
+    real_prep = tb.prepare_order
     monkeypatch.setattr(tb, "prepare_order",
                         lambda text, c, d: seen["prep"].append(text) or real_prep(text, c, d))
-    monkeypatch.setattr(tb, "place_prepared",
-                        lambda plan, t: seen["place"].append(plan) or real_place(plan, t))
     client, trader = _JwapClient(mid=130.0), _JwapTrader()
     p, _ = _start("/jwap sol sell size=1200 over=1h every=5m staged", client=client)
     jwaps = {1: p}
     tb.poll_jwaps("api", {"mm3": client}, {"mm3": trader}, jwaps, now=_ENTRY + 5)
     assert seen["prep"] == ["/trade SOL sell size=100usd aggressive staged"]
     assert call_pair(trader) == "SOL-USDT.PERP"        # not on the MM3 roster -> the perp book
-    assert len(seen["place"]) == 1
+    assert len(trader.calls) == 1
     call = trader.calls[0]
     assert call["quantity"] == 100.0 and call["quantity_currency"] == "USDT"
     assert call["aggression"] == "aggressive"
     assert call["order_status"] == "staged"
-    assert p["oids"] == ["c1"] and p["fired"] == 1 and p["next"] == 1
+    cid = tb.jrec.child_id(1, int(_ENTRY), 0)
+    assert call["client_order_id"] == cid
+    assert p["oids"] == [cid] and p["fired"] == 1 and p["next"] == 1
 
 
 def test_jwap_child_more_than_60s_late_is_skipped(jason_stub):
@@ -1140,12 +1142,15 @@ def test_jwap_candles_drop_the_forming_bar(monkeypatch):
 
 
 def test_jwap_stop_ends_the_parent_with_the_final_message(jason_stub):
-    fills = {"c1": {"executed_qty": 1, "net_consideration": "-130", "avg_price": "130"}}
-    client, trader = _JwapClient(mid=130.0), _JwapTrader(fills)
+    """Once every child is final, stop ends the parent at once with the final message."""
+    trader = _JwapTrader()
+    client = _JwapClient(mid=130.0)
     jwaps: dict = {}
     tb.handle_jwap("/jwap sol sell size=1200 over=1h", client, trader, "mm3", "c1", jwaps, now=_T0)
-    tb.poll_jwaps("api", {"mm3": client}, {"mm3": trader}, jwaps, now=_ENTRY + 1)
     (pid,) = jwaps
+    trader.fills[tb.jrec.child_id(pid, int(_ENTRY), 0)] = {
+        "order_status": "closed", "executed_qty": 1, "net_consideration": "-130", "avg_price": "130"}
+    tb.poll_jwaps("api", {"mm3": client}, {"mm3": trader}, jwaps, now=_ENTRY + 1)
     assert f"#{pid} SELL SOL" in tb.handle_jwap("/jwap status", client, trader, "mm3", "c1", jwaps)
     assert "No JWAP" in tb.handle_jwap("/jwap stop sol", client, trader, "mm2", "c2", jwaps)
     reply = tb.handle_jwap("/jwap stop sol", client, trader, "mm3", "c1", jwaps)

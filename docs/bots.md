@@ -705,8 +705,8 @@ USDT. Verified live — the two produce different default limits from different 
 
 `/jwap <token> <buy|sell> size=<50k|250000tok> over=<90m|6h|2d> [every=5m] [sigma=1.5] [age=1.5d]
 [perp] [staged] [quote=usd]`, plus `/jwap status` and `/jwap stop <#id|token|all>` (`cancel` is
-an alias; both scoped to the chat's desk). Each parent gets a `#id`, never reused within a process,
-so one of several parents on the same token can be stopped alone; a bare `/jwap stop` lists the
+an alias; both scoped to the chat's desk). Each parent gets a `#id`, never reused (the next id
+comes from the record folder, so a restart does not reset it), so one of several parents on the same token can be stopped alone; a bare `/jwap stop` lists the
 running parents instead of guessing. Same chat → desk and trader-allowlist gate as `/trade`. Rule and study:
 `docs/jwap_rule_spec.md`; pure logic: `src/signals/jwap.py`.
 
@@ -721,12 +721,14 @@ running parents instead of guessing. Same chat → desk and trader-allowlist gat
   `jwap_max_usd` is $50k on every desk except **OTC ($1m)**; a USD child over the desk's per-order
   `max_usd` ($50k) is refused at start, since `prepare_order` would refuse every slice. Each
   child is an internal `/trade <token> <side> size=<child> aggressive [perp] [staged] [quote=]`
-  through `prepare_order` + `place_prepared` — no other placement path. `aggressive` (limit 1%
-  through the touch) stands in for "market".
+  through `prepare_order` (every /trade rail), then placed under **our own** `client_order_id`
+  `jwap-<id>-<entry>-<slice>`. `aggressive` (limit 1% through the touch) stands in for "market".
+  A child **still working 5 minutes after placement is cancelled**; what it did not fill is left
+  over, never re-sent.
 - **Prices:** the gate mid is CoinRoutes `mid_on` on the strategy's own venues (`price_venues`).
   **Only the JASON candles come from Binance** — USD-M perp 1h klines for `<TOKEN>USDT`, ~9 days,
   forming bar dropped — recomputed once per new hourly bar. No Binance perp / no klines at start →
-  refused. A mid or kline failure mid-run → that child's gate is **closed** (logged, no retry).
+  refused. A mid or kline failure mid-run (after retries) → that child's gate is **closed**.
   ⚠️ A token pinned by `TOKEN_VENUES` to non-Binance venues (`AI`) is refused: Binance's `AIUSDT`
   is a different coin, so its levels would be wrong.
 - **Timing:** no threads. `poll_jwaps` runs next to `poll_pending`, and while any parent is active
@@ -734,12 +736,34 @@ running parents instead of guessing. Same chat → desk and trader-allowlist gat
   compiling JASON's numba kernel, during which the bot is unresponsive.
 - **Messages:** a multi-line start message (`#id`, target and slice size, the level and age
   condition, price now → trading/waiting, how to stop), **one summary per hour** (fired/elapsed, filled so
-  far from `get_order` on the child ids), and a final `✅ JWAP #id SOL done · filled … of … (N%) · k of
-  n slices · avg …` on completion or stop. The first child placement failure is sent once; later
-  ones are counted in the summaries. Children are **not** in the per-order fill tracker.
-- ⚠️ **Parents live in memory only** — a restart loses every running JWAP (a warning is logged at
-  startup). Already-placed children are unaffected. `/jwap stop` also does **not** cancel placed
-  children; they are aggressive and normally already done.
+  far from the children's last CoinRoutes records), and a final `✅ JWAP #id SOL done · filled … of …
+  (N%) · k of n slices · avg …` once every child is final. The first child failure is sent once;
+  later ones are counted in the summaries. Children are **not** in the per-order fill tracker.
+- **Stop:** no new slices; working children are cancelled at once; the final message follows when
+  they are final (`🛑 … stopping` until then).
+- **CoinRoutes retries:** reads (mid, `prepare_order`'s prices, `get_order`) and cancels retry a
+  timeout, connection error, 404, 408, 425, 429 or 5xx after 1, 2 and 4s. A **place is never
+  retried blind**: after a transient error CoinRoutes is asked for our `client_order_id`, and the
+  order is re-sent (same id) only if it is not there. A 400 is a real rejection: recorded, not
+  retried. Retries block the poll loop for at most a few seconds each.
+
+#### The record: `data/state/jwap/<id>.jsonl` — the truth after any crash
+
+One append-only JSON line per event, fsync'd **before** the bot acts on it (`scripts/jwap_record.py`).
+A parent whose record cannot be written is refused at start. Events: `created` (command, who,
+parameters, arrival mid / level / gate), `jason` (every hourly row the gate reads, both sides),
+`slice` (**every** scheduled slice: due time, mid, level, pivot age, result `fired` /
+`gate_closed` / `no_price` / `jason_failed` / `late` / `bot_down`), `intent` (written before the
+order is sent, with its full parameters), `placed` / `failed`, `retry`, `fill` (the full
+CoinRoutes order record each time its status or executed quantity changes), `cancel`, `stopped`,
+`resumed`, `done` (filled, average price, left over).
+
+- **Restart:** at start-up every parent without `done` is rebuilt from its record. An `intent` with
+  no answer is settled by asking CoinRoutes for its id (`placed` with `recovered: true`, or
+  `failed` at stage `restart`), so a slice is never placed twice or lost. Slices that fell due while
+  the bot was down are recorded as `bot_down` and not caught up. The chat gets `♻️ JWAP #id … resumed`.
+- ⚠️ **Never leave test or hand-made files in `data/state/jwap/`**: the bot resumes every
+  unfinished record there as a live parent. Tests are sandboxed by `tests/conftest.py`.
 
 ### Desk shapes — three, not one
 

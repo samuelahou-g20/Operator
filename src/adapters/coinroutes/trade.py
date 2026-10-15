@@ -31,6 +31,16 @@ TOKEN_ENV = "CR_API_TOKEN_G20JPY"
 # 100% filled at 14:44:57, so treating it as final reported a failure on an order that filled.
 TERMINAL = {"closed", "cancelled", "rejected"}
 
+
+
+class CoinRoutesHTTPError(RuntimeError):
+    """A non-2xx reply, with its ``status`` so a caller can tell a transient error from a rejection."""
+
+    def __init__(self, message: str, status: int) -> None:
+        super().__init__(message)
+        self.status = status
+
+
 # `error_code` is NOT an error. It is the execution algo's working-state annotation, and the most
 # common value in the whole population is `dust` on a fully-filled order (1,193 of 1,711). Other
 # values seen: active, throttled, paused, target_wait, limit_not_marketable, send_failed -- each
@@ -80,13 +90,16 @@ class CoinRoutesTrader:
                   quantity_currency, order_type, order_status)
         resp = self.session.post(f"{self.base_url}/api/client_orders/", json=payload, timeout=30)
         if resp.status_code >= 400:
-            raise RuntimeError(f"CoinRoutes place failed {resp.status_code}: {resp.text[:500]}")
+            raise CoinRoutesHTTPError(f"CoinRoutes place failed {resp.status_code}: {resp.text[:500]}",
+                                      resp.status_code)
         return resp.json()
 
     def get_order(self, client_order_id: str) -> dict:
         """Fetch one client order's current state (``GET /api/client_orders/{id}/``)."""
         resp = self.session.get(f"{self.base_url}/api/client_orders/{client_order_id}/", timeout=30)
-        resp.raise_for_status()
+        if resp.status_code >= 400:
+            raise CoinRoutesHTTPError(f"CoinRoutes get_order failed {resp.status_code}: "
+                                      f"{resp.text[:400]}", resp.status_code)
         return resp.json()
 
     def cancel(self, client_order_id: str) -> dict:
@@ -94,7 +107,8 @@ class CoinRoutesTrader:
         resp = self.session.post(f"{self.base_url}/api/client_orders/{client_order_id}/cancel/",
                                  timeout=30)
         if resp.status_code >= 400:
-            raise RuntimeError(f"CoinRoutes cancel failed {resp.status_code}: {resp.text[:400]}")
+            raise CoinRoutesHTTPError(f"CoinRoutes cancel failed {resp.status_code}: {resp.text[:400]}",
+                                      resp.status_code)
         try:
             return resp.json()
         except ValueError:
@@ -112,7 +126,8 @@ class CoinRoutesTrader:
         resp = self.session.post(f"{self.base_url}/api/client_orders/{client_order_id}/modify/",
                                  json=fields, timeout=30)
         if resp.status_code >= 400:
-            raise RuntimeError(f"CoinRoutes modify failed {resp.status_code}: {resp.text[:400]}")
+            raise CoinRoutesHTTPError(f"CoinRoutes modify failed {resp.status_code}: {resp.text[:400]}",
+                                      resp.status_code)
         try:
             return resp.json()
         except ValueError:

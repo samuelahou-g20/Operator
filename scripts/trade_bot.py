@@ -36,13 +36,16 @@ Safety (this bot moves real money):
 ``/jwap <token> <buy|sell> size= over= [every=5m] [sigma=1.5] [age=1.5d]`` is a TWAP whose
 children fire only when a JASON condition holds (``src.signals.jwap``; spec ``docs/jwap_rule_spec.md``).
 The full target is capped once at start through ``resolve`` + ``build_order``; every child is then
-an internal ``/trade <token> <side> size=<child> aggressive`` run through ``prepare_order`` +
-``place_prepared`` -- the ONLY order path, so each child inherits every /trade rail. ``aggressive``
-(limit 1% through the touch) stands in for "market". A child the gate is closed on, or that comes
-due more than 60s late, is skipped and never caught up. The gate price is the CoinRoutes mid on the
-strategy's own venues; only the JASON candles come from Binance USD-M perp 1h klines (closed bars
-only). Parents are in memory only: a restart loses them. No threads -- ``poll_jwaps`` runs in the
-main loop, which shortens its long-poll while any parent is active.
+an internal ``/trade <token> <side> size=<child> aggressive`` run through ``prepare_order``, so
+each child inherits every /trade rail, then placed under our own ``client_order_id`` with a safe
+retry (CoinRoutes is asked for that id before any re-send). ``aggressive`` (limit 1% through the
+touch) stands in for "market"; a child still working 5 minutes after placement is cancelled. A
+child the gate is closed on, or that comes due more than 60s late, is skipped and never caught up.
+The gate price is the CoinRoutes mid on the strategy's own venues; only the JASON candles come from
+Binance USD-M perp 1h klines (closed bars only). Every slice, order, retry and fill is recorded in
+``scripts.jwap_record`` before it is acted on, and parents resume from that record after a
+restart. No threads -- ``poll_jwaps`` runs in the main loop, which shortens its long-poll while
+any parent is active.
 
 MUST NOT: hold market-data or PnL logic, or open the data lake. Order translation lives in the
 adapter; this script is command parsing + safety + Telegram plumbing only.
@@ -79,6 +82,7 @@ import matplotlib.pyplot as plt  # noqa: E402 - must follow backend selection
 
 from scripts.mm2_trade_log_bot import MM2_STRATEGIES  # noqa: E402
 from scripts import desk_trades  # noqa: E402 - trade-service fills live there
+from scripts import jwap_record as jrec  # noqa: E402 - the durable /jwap record
 from scripts.trade_plot import (  # noqa: E402 - market-data/PnL logic stays out of here
     MM_ENGINE,
     desk_strategies,
@@ -87,7 +91,11 @@ from scripts.trade_plot import (  # noqa: E402 - market-data/PnL logic stays out
     token_currencies,
 )
 from src.adapters.coinroutes.client import CoinRoutesClient  # noqa: E402
-from src.adapters.coinroutes.trade import TERMINAL, CoinRoutesTrader  # noqa: E402
+from src.adapters.coinroutes.trade import (  # noqa: E402
+    TERMINAL,
+    CoinRoutesHTTPError,
+    CoinRoutesTrader,
+)
 from src.adapters.errors import AdapterError  # noqa: E402
 from src.common.config import load_config, require_env  # noqa: E402
 from src.common.logging import get_logger  # noqa: E402
@@ -1637,7 +1645,9 @@ _JWAP_BARS = 9 * 24          # 7d lookback + 36h vol warm-up + slack, in closed 
 _FAPI = "https://fapi.binance.com"
 _HOUR = 3600
 _DUR_S = {"s": 1, "m": 60, "h": 3600, "d": 86400}
-_JWAP_IDS = itertools.count(1)   # never reused within a process, so "#3" always means one parent
+JWAP_RETRY_WAITS = (1, 2, 4)     # seconds between tries on a transient CoinRoutes error
+JWAP_FILL_POLL_S = 60            # how often working children are read back
+JWAP_CANCEL_AFTER_S = 300        # a child still working this long is cancelled; the rest is left over
 
 
 def _parse_duration(raw: str) -> float:
@@ -1769,12 +1779,91 @@ def jwap_gate_at(side: str, jason: pd.DataFrame, minute: float, mid: float | Non
     return bool(on.iloc[0]), level
 
 
+def jwap_days_at(side: str, jason: pd.DataFrame, minute: float) -> float:
+    """The pivot age (days) the gate reads at ``minute``, for the record."""
+    idx = pd.DatetimeIndex([pd.Timestamp(minute, unit="s")])
+    return float(knowable_on_minutes(jason[SIDE_COLUMNS[side][1]], idx).iloc[0])
+
+
+def _jason_event(p: dict) -> None:
+    """Record the JASON row the gate now reads: both sides, so the record explains every slice."""
+    last = p["jason"].iloc[-1]
+    jrec.append(p["id"], "jason", bar=str(p["jason"].index[-1]),
+                row={c: float(last[c]) for c in ("jsonk_dn", "days_dn", "jsonk_up", "days_up")})
+
+
+def _transient(e: Exception) -> bool:
+    """A CoinRoutes error worth retrying: network trouble, 404 (seen transiently on reads), 408,
+    425, 429 and 5xx. A 400 is a real rejection and is never retried."""
+    if isinstance(e, requests.exceptions.RequestException):
+        return True
+    code = getattr(e, "status", None)
+    if code is None and isinstance(e, AdapterError):
+        code = e.code
+        if code is None:                 # the read client already retried a network failure
+            return True
+    try:
+        code = int(code)
+    except (TypeError, ValueError):
+        return False
+    return code in (404, 408, 425, 429) or code >= 500
+
+
+def _with_retry(fn, pid: int, what: str, **ctx):
+    """``fn()``, retried on a transient error after each of ``JWAP_RETRY_WAITS`` seconds. Every
+    retry is recorded. Re-raises the last error, or a non-transient one at once."""
+    for attempt, wait in enumerate((*JWAP_RETRY_WAITS, None), start=1):
+        try:
+            return fn()
+        except Exception as e:  # noqa: BLE001 - classified below
+            if wait is None or not _transient(e):
+                raise
+            _log.warning("jwap #%s %s attempt %d failed, retrying in %ss: %s", pid, what, attempt,
+                         wait, e)
+            jrec.append(pid, "retry", what=what, attempt=attempt, error=str(e)[:300], **ctx)
+            time.sleep(wait)
+    raise AssertionError("unreachable")
+
+
+def _lookup(trader: CoinRoutesTrader, pid: int, cid: str) -> dict | None:
+    """The order CoinRoutes holds under our ``cid``, or None if it still says 404 after retries."""
+    try:
+        return _with_retry(lambda: trader.get_order(cid), pid, "lookup", cid=cid)
+    except CoinRoutesHTTPError as e:
+        if e.status == 404:
+            return None
+        raise
+
+
+def _place_child(trader: CoinRoutesTrader, kw: dict, pid: int) -> dict:
+    """Place one child, safely retried. After a transient error the order may still have landed,
+    so CoinRoutes is asked for our ``client_order_id`` first and the order is sent again (same id)
+    only if it is not there. Returns CoinRoutes' order record; raises if it never lands."""
+    cid = kw["client_order_id"]
+    for attempt, wait in enumerate((*JWAP_RETRY_WAITS, None), start=1):
+        try:
+            return trader.place(**kw)
+        except Exception as e:  # noqa: BLE001 - classified below
+            if not _transient(e):
+                raise
+            jrec.append(pid, "retry", what="place", attempt=attempt, error=str(e)[:300], cid=cid)
+            time.sleep(wait or 0)
+            found = _lookup(trader, pid, cid)
+            if found is not None:
+                return found
+            if wait is None:
+                raise
+    raise AssertionError("unreachable")
+
+
 def start_jwap(text: str, client: CoinRoutesClient, desk: dict, *, desk_name: str, chat_id: str,
-               now: float | None = None, pid: int = 0) -> tuple[dict | None, str]:
-    """Validate a /jwap and build its parent. Returns ``(parent, start message)`` or ``(None,
-    refusal)``. The FULL target is capped here (3x per-token, desk ``jwap_max_usd``, and for a token
-    target its notional at the touch, as prepare_order does); each child is capped again when it
-    goes through prepare_order. Places nothing. Never raises."""
+               now: float | None = None, pid: int = 0, user_id: str | None = None
+               ) -> tuple[dict | None, str]:
+    """Validate a /jwap, build its parent and write its ``created`` record. Returns ``(parent,
+    start message)`` or ``(None, refusal)``. The FULL target is capped here (3x per-token, desk
+    ``jwap_max_usd``, and for a token target its notional at the touch, as prepare_order does);
+    each child is capped again when it goes through prepare_order. Places nothing. A parent whose
+    record cannot be written is refused. Never raises."""
     now = time.time() if now is None else now
     try:
         cmd = parse_jwap(text)
@@ -1816,20 +1905,30 @@ def start_jwap(text: str, client: CoinRoutesClient, desk: dict, *, desk_name: st
     if unit == "usd" and child > desk["max_usd"]:     # each child would be refused by prepare_order
         return None, (f"❌ each slice would be ${child:,.0f}, over the ${desk['max_usd']:,.0f} "
                       f"per-order cap — use a longer over= or a shorter every=.")
-    child_text =(f"/trade {base} {side} size={child:.10g}{'usd' if unit == 'usd' else 'tok'} "
+    child_text = (f"/trade {base} {side} size={child:.10g}{'usd' if unit == 'usd' else 'tok'} "
                   f"aggressive" + (" perp" if cmd["perp"] else "") + (" staged" if cmd["staged"] else "")
                   + (f" quote={cmd['quote'].lower()}" if cmd["quote"] else ""))
     entry = (int(now) // 60 + 1) * 60                      # the next whole minute
-    p = {**cmd, "id": pid, "base": base, "pair": pair, "pxv": pxv, "desk": desk_name, "chat_id": chat_id,
-         "child": child, "child_text": child_text, "entry": entry, "next": 0, "fired": 0,
-         "late": 0, "errors": 0, "oids": [], "jason": jason, "jason_bar": jason.index[-1],
-         "next_summary": entry + _HOUR}
+    params = {**cmd, "id": pid, "base": base, "pair": pair, "strategy": strategy, "pxv": pxv,
+              "desk": desk_name, "chat_id": chat_id, "user_id": user_id, "child": child,
+              "child_text": child_text, "entry": entry}
+    p = {**params, "next": 0, "fired": 0, "late": 0, "errors": 0, "oids": [], "children": {},
+         "stopped": False, "jason": jason, "jason_bar": jason.index[-1],
+         "next_summary": entry + _HOUR, "next_fill_poll": 0.0}
     try:
         mid = client.mid_on(pair, pxv)
     except Exception as e:  # noqa: BLE001 - only the "gate now" note depends on it
         _log.warning("jwap mid failed for %s: %s", pair, e)
         mid = None
     gate_now, level = jwap_gate_at(side, jason, int(now) // 60 * 60, mid, cmd["age"])
+    days = jwap_days_at(side, jason, int(now) // 60 * 60)
+    try:
+        jrec.append(pid, "created", params=params, command=text, arrival_mid=mid,
+                    arrival_level=level, arrival_days=days, gate_open=gate_now)
+        _jason_event(p)
+    except OSError as e:
+        _log.exception("jwap #%s record not writable", pid)
+        return None, f"❌ can't write the JWAP record ({e}) — refusing to start untracked."
     sell = side == "sell"
     now_line = (f"Price now: {_fmt_price(mid)} → {'trading' if gate_now else 'waiting'}"
                 if mid is not None else "Price now: unavailable → waiting")
@@ -1847,107 +1946,238 @@ def start_jwap(text: str, client: CoinRoutesClient, desk: dict, *, desk_name: st
 
 
 def _jwap_child(p: dict, client: CoinRoutesClient, trader: CoinRoutesTrader, api: str,
-                minute: float, now: float) -> None:
-    """Evaluate the gate for one due child and, if open, place it through the /trade path."""
+                minute: float, now: float, seq: int) -> None:
+    """Evaluate the gate for slice ``seq`` and, if open, place it through the /trade path. Every
+    outcome is recorded; the ``intent`` line is written BEFORE the order is sent."""
+    pid = p["id"]
     need = pd.Timestamp((int(minute) // _HOUR - 1) * _HOUR, unit="s")   # last closed bar's open
-    if p["jason_bar"] < need:                    # a new hourly bar closed: recompute JASON once
+    if p["jason"] is None or p["jason_bar"] < need:   # a new hourly bar closed: recompute once
         try:
-            p["jason"] = jwap_jason(p["base"], p["sigma"], now)
+            p["jason"] = _with_retry(lambda: jwap_jason(p["base"], p["sigma"], now), pid, "jason")
             p["jason_bar"] = p["jason"].index[-1]
+            _jason_event(p)
         except Exception as e:  # noqa: BLE001 - no fresh bar -> this child's gate is closed
             _log.warning("jwap %s: JASON refresh failed, gate closed: %s", p["base"], e)
+            jrec.append(pid, "slice", seq=seq, due=minute, result="jason_failed", error=str(e)[:300])
             return
     try:
-        mid = client.mid_on(p["pair"], p["pxv"])
+        mid = _with_retry(lambda: client.mid_on(p["pair"], p["pxv"]), pid, "mid", seq=seq)
     except Exception as e:  # noqa: BLE001 - no price -> gate closed
         _log.warning("jwap %s: mid failed, gate closed: %s", p["base"], e)
+        jrec.append(pid, "slice", seq=seq, due=minute, result="no_price", error=str(e)[:300])
         return
     on, level = jwap_gate_at(p["side"], p["jason"], minute, mid, p["age"])
+    days = jwap_days_at(p["side"], p["jason"], minute)
+    jrec.append(pid, "slice", seq=seq, due=minute, mid=mid, level=level, days=days,
+                bar=str(p["jason_bar"]), result="fired" if on else "gate_closed")
     if not on:
         return
-    plan, err = prepare_order(p["child_text"], client, DESKS[p["desk"]])
-    reply, tracked = (err, None) if err is not None else place_prepared(plan, trader)
-    if not reply.startswith("✅"):
-        p["errors"] += 1
-        _log.warning("jwap %s child failed: %s", p["base"], reply)
-        if p["errors"] == 1:                     # say it once; the rest are counted in summaries
-            _send(api, p["chat_id"], f"⚠️ JWAP {p['base']} child failed: {reply[:200]}")
+    cid = jrec.child_id(pid, p["entry"], seq)
+    try:
+        plan, err = _with_retry(lambda: _prepare_or_raise(p["child_text"], client, p["desk"]),
+                                pid, "prepare", seq=seq)
+    except Exception as e:  # noqa: BLE001 - recorded and reported below
+        plan, err = None, str(e)
+    if plan is None:
+        _jwap_failed(p, api, cid, seq, "prepare", err)
         return
-    # place_prepared only returns `tracked` for a live order; a staged one's id is in the reply.
-    oid = tracked["oid"] if tracked else reply.split("`")[1]
-    p["oids"].append(oid)
+    kw = {**plan["place_kwargs"], "client_order_id": cid}
+    jrec.append(pid, "intent", cid=cid, seq=seq, place_kwargs=kw, touch=plan["touch"],
+                limit=plan["limit"], mid=mid, level=level)
+    try:
+        rec = _place_child(trader, kw, pid)
+    except Exception as e:  # noqa: BLE001 - recorded and reported below
+        _jwap_failed(p, api, cid, seq, "place", str(e))
+        return
+    jrec.append(pid, "placed", cid=cid, seq=seq, placed_at=now, order=rec)
+    p["oids"].append(cid)
+    p["children"][cid] = {"seq": seq, "placed_at": now, "terminal": False, "last": None,
+                          "cancel_sent": False}
     p["fired"] += 1
-    _log.warning("jwap %s child fired: mid=%s level=%g oid=%s", p["base"], mid, level, oid)
+    _log.warning("jwap %s child fired: mid=%s level=%g cid=%s", p["base"], mid, level, cid)
 
 
-def jwap_filled(p: dict, trader: CoinRoutesTrader) -> tuple[float, float, float | None]:
-    """(filled in the target's unit, filled base qty, avg price) over the recorded child ids,
-    read the way ``_fill_message`` reads an order. Unreadable orders are skipped."""
-    usd = qty = 0.0
-    for oid in p["oids"]:
+def _prepare_or_raise(text: str, client: CoinRoutesClient, desk_name: str) -> tuple[dict, None]:
+    """``prepare_order``, with a refusal raised as a retryable error: prepare is read-only, so a
+    refusal caused by a flaky price read is worth another try; a real one just repeats."""
+    plan, err = prepare_order(text, client, DESKS[desk_name])
+    if err is not None:
+        raise AdapterError(err, venue="coinroutes")
+    return plan, None
+
+
+def _jwap_failed(p: dict, api: str, cid: str, seq: int, stage: str, err: str) -> None:
+    p["errors"] += 1
+    jrec.append(p["id"], "failed", cid=cid, seq=seq, stage=stage, error=str(err)[:500])
+    _log.warning("jwap %s child %s failed at %s: %s", p["base"], seq, stage, err)
+    if p["errors"] == 1:                     # say it once; the rest are counted in summaries
+        _send(api, p["chat_id"], f"⚠️ JWAP #{p['id']} {p['base']} slice failed: {str(err)[:200]}")
+
+
+def _jwap_track(p: dict, trader: CoinRoutesTrader, now: float) -> None:
+    """Poll every working child; record each change of state or fill; cancel one still working
+    ``JWAP_CANCEL_AFTER_S`` after placement (the rest is left over, never re-sent)."""
+    for cid, ch in p["children"].items():
+        if ch["terminal"]:
+            continue
         try:
-            rec = trader.get_order(oid)
+            rec = _with_retry(lambda: trader.get_order(cid), p["id"], "get_order", cid=cid)
+        except Exception as e:  # noqa: BLE001 - try again next poll
+            _log.warning("jwap #%s get_order %s failed: %s", p["id"], cid, e)
+            continue
+        last = ch["last"] or {}
+        if (rec.get("order_status"), rec.get("executed_qty")) != (last.get("order_status"),
+                                                                  last.get("executed_qty")):
+            jrec.append(p["id"], "fill", cid=cid, seq=ch["seq"], order=rec)
+        ch["last"] = rec
+        ch["terminal"] = str(rec.get("order_status")) in TERMINAL
+        if (not ch["terminal"] and not ch["cancel_sent"]
+                and now - ch["placed_at"] >= JWAP_CANCEL_AFTER_S):
+            try:
+                _with_retry(lambda: trader.cancel(cid), p["id"], "cancel", cid=cid)
+                ch["cancel_sent"] = True
+                jrec.append(p["id"], "cancel", cid=cid, seq=ch["seq"], ok=True)
+            except Exception as e:  # noqa: BLE001 - recorded; retried next poll
+                jrec.append(p["id"], "cancel", cid=cid, seq=ch["seq"], ok=False, error=str(e)[:300])
+
+
+def jwap_filled(p: dict) -> tuple[float, float, float | None]:
+    """(filled in the target's unit, filled base qty, avg price) from the children's last known
+    CoinRoutes records."""
+    usd = qty = 0.0
+    for ch in p["children"].values():
+        rec = ch["last"] or {}
+        try:
             avg = float(rec.get("avg_price") or 0)
             exq = float(rec.get("executed_qty") or 0)
             usd += abs(float(rec.get("net_consideration") or 0)) or exq * avg
             qty += exq
-        except Exception as e:  # noqa: BLE001 - best-effort report
-            _log.warning("jwap get_order %s failed: %s", oid, e)
+        except (TypeError, ValueError):
+            continue
     return (usd if p["unit"] == "usd" else qty), qty, (usd / qty if qty else None)
 
 
-def _jwap_progress(p: dict, trader: CoinRoutesTrader) -> tuple[str, str]:
-    filled, _qty, avg = jwap_filled(p, trader)
+def _jwap_progress(p: dict) -> tuple[str, str]:
+    filled, _qty, avg = jwap_filled(p)
     pct = filled / p["size"] * 100 if p["size"] else 0.0
     out = f"filled {_jwap_amt(filled, p)} of {_jwap_amt(p['size'], p)} ({pct:.0f}%)"
     return out, (f" · avg {_fmt_price(avg)}" if avg else "") + (
         f" · {p['errors']} failed" if p["errors"] else "")
 
 
-def jwap_final(p: dict, trader: CoinRoutesTrader, word: str = "done") -> str:
-    head, tail = _jwap_progress(p, trader)
+def jwap_final(p: dict, word: str = "done") -> str:
+    head, tail = _jwap_progress(p)
     return f"✅ JWAP #{p['id']} {p['base']} {word} · {head} · {p['fired']} of {p['n']} slices{tail}"
 
 
-def jwap_summary(p: dict, trader: CoinRoutesTrader) -> str:
-    head, tail = _jwap_progress(p, trader)
+def jwap_summary(p: dict) -> str:
+    head, tail = _jwap_progress(p)
     return (f"⏱ JWAP #{p['id']} {p['side'].upper()} {p['base']} · {p['fired']} of {p['next']} slices "
             f"traded so far ({p['n']} total) · {head}{tail}")
 
 
+def _jwap_finish_if_settled(p: dict, jwaps: dict, api: str | None) -> str | None:
+    """Write ``done`` and drop the parent once no slice is left and every child is final. Returns
+    the final message, or None while children are still working."""
+    if p["next"] < p["n"] and not p["stopped"]:
+        return None
+    if any(not ch["terminal"] for ch in p["children"].values()):
+        return None
+    filled, qty, avg = jwap_filled(p)
+    jrec.append(p["id"], "done", stopped=p["stopped"], fired=p["fired"], late=p["late"],
+                errors=p["errors"], filled=filled, filled_qty=qty, avg_price=avg,
+                left_over=p["size"] - filled)
+    jwaps.pop(p["id"], None)
+    msg = jwap_final(p, "stopped" if p["stopped"] else "done")
+    if api is not None:
+        _send(api, p["chat_id"], msg)
+    return msg
+
+
 def poll_jwaps(api: str, cr_clients: dict, cr_traders: dict, jwaps: dict,
                now: float | None = None) -> None:
-    """Fire every JWAP child whose minute has arrived; hourly summaries; final message on
-    completion. Called each poll-loop iteration next to ``poll_pending``. Children are NOT added to
-    ``pending`` (that would be one fill message per child). Never raises."""
+    """Fire every JWAP child whose minute has arrived, track working children, hourly summaries,
+    final message once settled. Called each poll-loop iteration next to ``poll_pending``. Children
+    are NOT added to ``pending`` (that would be one fill message per child). Never raises."""
     now = time.time() if now is None else now
     for pid, p in list(jwaps.items()):
         try:
             client, trader = cr_clients[p["desk"]], cr_traders[p["desk"]]
-            while p["next"] < p["n"] and p["entry"] + p["next"] * p["every"] <= now:
-                minute = p["entry"] + p["next"] * p["every"]
+            while (not p["stopped"] and p["next"] < p["n"]
+                   and p["entry"] + p["next"] * p["every"] <= now):
+                seq, minute = p["next"], p["entry"] + p["next"] * p["every"]
                 p["next"] += 1           # consumed BEFORE placing: a later error can't re-place it
                 if now - minute > JWAP_LATE_S:
                     p["late"] += 1       # no catch-up
+                    jrec.append(pid, "slice", seq=seq, due=minute, result="late", at=now)
                     continue
-                _jwap_child(p, client, trader, api, minute, now)
-            if p["next"] >= p["n"]:
-                del jwaps[pid]
-                _send(api, p["chat_id"], jwap_final(p, trader))
+                _jwap_child(p, client, trader, api, minute, now, seq)
+            if now >= p["next_fill_poll"] and any(not c["terminal"] for c in p["children"].values()):
+                p["next_fill_poll"] = now + JWAP_FILL_POLL_S
+                _jwap_track(p, trader, now)
+            if _jwap_finish_if_settled(p, jwaps, api) is not None:
                 continue
             if now >= p["next_summary"]:
                 while p["next_summary"] <= now:
                     p["next_summary"] += _HOUR
-                _send(api, p["chat_id"], jwap_summary(p, trader))
+                _send(api, p["chat_id"], jwap_summary(p))
         except Exception:  # noqa: BLE001 - a JWAP must never kill the money bot's loop
             _log.exception("poll_jwaps %s failed", pid)
 
 
+def resume_jwaps(cr_traders: dict, now: float | None = None) -> tuple[dict, list[tuple[str, str]]]:
+    """Rebuild every unfinished parent from its record after a restart. An ``intent`` with no
+    answer is settled by asking CoinRoutes for its id; slices that fell due while the bot was down
+    are recorded as ``bot_down`` (no catch-up). Returns (jwaps, [(chat_id, message)])."""
+    now = time.time() if now is None else now
+    jwaps: dict = {}
+    notes = []
+    for pid in jrec.unfinished():
+        try:
+            st = jrec.replay(jrec.load(pid))
+            trader = cr_traders[st["desk"]]
+            for it in st.pop("unconfirmed"):
+                rec = _lookup(trader, pid, it["cid"])
+                if rec is None:
+                    st["errors"] += 1
+                    jrec.append(pid, "failed", cid=it["cid"], seq=it["seq"], stage="restart",
+                                error="no answer before the restart and CoinRoutes has no such order")
+                else:
+                    jrec.append(pid, "placed", cid=it["cid"], seq=it["seq"], placed_at=now,
+                                order=rec, recovered=True)
+                    st["fired"] += 1
+                    st["oids"].append(it["cid"])
+                    st["children"][it["cid"]] = {"seq": it["seq"], "placed_at": now,
+                                                 "terminal": False, "last": None,
+                                                 "cancel_sent": False}
+            missed = 0
+            while (not st["stopped"] and st["next"] < st["n"]
+                   and now - (st["entry"] + st["next"] * st["every"]) > JWAP_LATE_S):
+                jrec.append(pid, "slice", seq=st["next"],
+                            due=st["entry"] + st["next"] * st["every"], result="bot_down")
+                st["next"] += 1
+                st["late"] += 1
+                missed += 1
+            jrec.append(pid, "resumed", at=now, missed=missed, working=sum(
+                not c["terminal"] for c in st["children"].values()))
+            hours = max(0, int((now - st["entry"]) // _HOUR) + 1)
+            jwaps[pid] = {**st, "jason": None, "jason_bar": None,
+                          "next_summary": st["entry"] + hours * _HOUR, "next_fill_poll": 0.0}
+            notes.append((st["chat_id"], f"♻️ JWAP #{pid} {st['base']} resumed after a restart"
+                          + (f" · {missed} slice(s) missed while down" if missed else "")))
+        except Exception:  # noqa: BLE001 - one bad record must not stop the others resuming
+            _log.exception("jwap #%s could not be resumed", pid)
+            notes.append((None, f"jwap #{pid} could not be resumed"))
+    return jwaps, notes
+
+
 def handle_jwap(text: str, client: CoinRoutesClient, trader: CoinRoutesTrader, desk_name: str,
-                chat_id: str, jwaps: dict, now: float | None = None) -> str:
+                chat_id: str, jwaps: dict, now: float | None = None, user_id: str | None = None) -> str:
     """``/jwap ...`` | ``/jwap stop <#id|token|all>`` (``cancel`` is an alias) | ``/jwap status``.
     Stop/status only see THIS desk's parents. A bare stop lists them rather than guessing which.
-    Stop does not cancel children already placed. Returns the reply."""
+    Stop ends new slices and cancels working children; the final message follows once they are
+    final. Returns the reply."""
+    now = time.time() if now is None else now
     parts = text.split()
     sub = parts[1].lower() if len(parts) > 1 else ""
     mine = {pid: p for pid, p in jwaps.items() if p["desk"] == desk_name}
@@ -1958,7 +2188,8 @@ def handle_jwap(text: str, client: CoinRoutesClient, trader: CoinRoutesTrader, d
             f"#{pid} {p['side'].upper()} {p['base']} · target {_jwap_amt(p['size'], p)} over "
             f"{_dur(p['over'])} · {p['next']}/{p['n']} slices elapsed · {p['fired']} traded · ends "
             f"{datetime.fromtimestamp(p['entry'] + (p['n'] - 1) * p['every'], timezone.utc):%H:%M} UTC"
-            + (" · STAGED" if p["staged"] else "") for pid, p in mine.items())
+            + (" · STAGED" if p["staged"] else "") + (" · STOPPING" if p["stopped"] else "")
+            for pid, p in mine.items())
     if sub in ("stop", "cancel"):
         if not mine:
             return f"No JWAP running on {desk_name.upper()}."
@@ -1974,13 +2205,25 @@ def handle_jwap(text: str, client: CoinRoutesClient, trader: CoinRoutesTrader, d
             hit = [pid for pid, p in mine.items() if p["base"] == target.upper()]
         if not hit:
             return f"No JWAP {parts[2]} running on {desk_name.upper()}. See /jwap status."
-        return "\n".join(jwap_final(jwaps.pop(pid), trader, "stopped") for pid in hit)
-    pid = next(_JWAP_IDS)
+        out = []
+        for pid in hit:
+            p = jwaps[pid]
+            p["stopped"] = True
+            jrec.append(pid, "stopped", by=user_id, at=now)
+            for ch in p["children"].values():        # cancel now rather than at the 5-minute mark
+                ch["placed_at"] = min(ch["placed_at"], now - JWAP_CANCEL_AFTER_S)
+            _jwap_track(p, trader, now)
+            p["next_fill_poll"] = now + JWAP_FILL_POLL_S
+            msg = _jwap_finish_if_settled(p, jwaps, None)
+            out.append(msg or f"🛑 JWAP #{pid} {p['base']} stopping · working slices cancelled; "
+                              f"final fill report follows once they settle.")
+        return "\n".join(out)
+    pid = jrec.next_id()
     parent, reply = start_jwap(text, client, DESKS[desk_name], desk_name=desk_name,
-                               chat_id=chat_id, now=now, pid=pid)
+                               chat_id=chat_id, now=now, pid=pid, user_id=user_id)
     if parent is not None:
         jwaps[pid] = parent
-        _log.warning("jwap started: %s", parent["child_text"])
+        _log.warning("jwap #%s started: %s", pid, parent["child_text"])
     return reply
 
 
@@ -2048,11 +2291,14 @@ def main() -> None:
         _log.warning("startup drain failed: %s", e)
 
     pending: dict[str, dict] = {}          # live orders being watched for fills
-    jwaps: dict[int, dict] = {}            # running /jwap parents — in memory only (v1)
-    _log.warning("trade_bot started; PLACE_STATUS=%s; traders %s", PLACE_STATUS,
-                 {d: len(ids) for d, ids in traders.items()})
-    _log.warning("JWAP parents are in-memory only: any JWAP running before this restart is GONE "
-                 "(its already-placed children are unaffected)")
+    # Running /jwap parents, rebuilt from their records so a restart loses none of them.
+    jwaps, notes = resume_jwaps(cr_traders)
+    for note_chat, note in notes:
+        _log.warning(note)
+        if note_chat:
+            _send(api, note_chat, note)
+    _log.warning("trade_bot started; PLACE_STATUS=%s; traders %s; %d JWAP(s) resumed", PLACE_STATUS,
+                 {d: len(ids) for d, ids in traders.items()}, len(jwaps))
     while True:
         try:
             resp = requests.get(f"{api}/getUpdates",
@@ -2098,11 +2344,11 @@ def main() -> None:
                 _log.warning("%s (%s) from user %s: %s", cmd0, desk_name, user_id, text)
                 parts = text.split()
                 if cmd0 == "/jwap":
-                    # Same desk/trader authorisation as /trade above; every child places
-                    # through prepare_order + place_prepared, so it inherits every /trade rail.
+                    # Same desk/trader authorisation as /trade above; every child goes through
+                    # prepare_order, so it inherits every /trade rail.
                     _send(api, chat_id, handle_jwap(text, cr_clients[desk_name],
                                                     cr_traders[desk_name], desk_name, chat_id,
-                                                    jwaps))
+                                                    jwaps, user_id=user_id))
                     continue
                 if cmd0 == "/scalper":
                     # A volatility-scaled ladder. Same desk/trader authorisation as /trade above,
