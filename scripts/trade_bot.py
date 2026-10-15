@@ -139,20 +139,23 @@ DEFAULT_QTY = {
 # Per-desk config. `strategy` = token -> exact CR strategy NAME (spot gamma book); `default_qty` =
 # per-token default size in BASE TOKENS (missing = 0 = no default, so a bare command is refused and
 # an explicit size= is required); `perp_strategy` = strategy for tokens not in `strategy` (perps);
-# `max_usd` = USD hard cap; `traders_env` = env var holding that desk's numeric trader user-ids.
+# `max_usd` = USD hard cap per order; `jwap_max_usd` = USD cap on a /jwap's whole target (each
+# child is still held to `max_usd`); `traders_env` = env var holding that desk's numeric trader user-ids.
 # MM2 carries no per-token defaults, so MM2 orders must be USD-denominated (capped by max_usd).
 _MM2_STRATEGY = {t: s for t, s in MM2_STRATEGIES.items() if t != "PERP"}
 DESKS = {
     "mm3": {"strategy": STRATEGY, "default_qty": DEFAULT_QTY, "perp_strategy": PERP_STRATEGY,
-            "max_usd": 50_000, "traders_env": "TELEGRAM_TRADE_TRADERS", "cr_token_env": "CR_API_TOKEN_MM3"},
+            "max_usd": 50_000, "jwap_max_usd": 50_000, "traders_env": "TELEGRAM_TRADE_TRADERS",
+            "cr_token_env": "CR_API_TOKEN_MM3"},
     "mm2": {"strategy": _MM2_STRATEGY, "default_qty": {}, "perp_strategy": MM2_STRATEGIES["PERP"],
-            "max_usd": 50_000, "traders_env": "TELEGRAM_TRADE_TRADERS_MM2", "cr_token_env": "CR_API_TOKEN_MM2"},
+            "max_usd": 50_000, "jwap_max_usd": 50_000, "traders_env": "TELEGRAM_TRADE_TRADERS_MM2",
+            "cr_token_env": "CR_API_TOKEN_MM2"},
     # MM4: spot gamma only — `perp_strategy` is None, so a token outside the roster is REFUSED
     # rather than routed to another desk's futures book. Runs on the MM3 CoinRoutes key
     # (`bot_mm3user` is already on all 15 strategies) and the MM3 trader allowlist, per the owner.
     # No per-token defaults: MM4 orders are USD-denominated, capped by max_usd.
     "mm4": {"strategy": _DESKS_CFG["mm4"]["strategy"], "default_qty": {}, "perp_strategy": None,
-            "max_usd": 50_000, "traders_env": "TELEGRAM_TRADE_TRADERS",
+            "max_usd": 50_000, "jwap_max_usd": 50_000, "traders_env": "TELEGRAM_TRADE_TRADERS",
             "cr_token_env": "CR_API_TOKEN_MM3"},
     # OTC desk: one catch-all SPOT strategy for every token (no gamma roster, no futures book).
     # `spot_strategy` is what makes it spot — without it an unrostered token falls to the perp
@@ -161,12 +164,14 @@ DESKS = {
     # default. No per-token defaults: USD sizing only, capped by max_usd.
     "otc": {"strategy": {}, "default_qty": {}, "perp_strategy": None,
             "spot_strategy": _DESKS_CFG["otc"]["spot_strategy"],
-            "max_usd": 50_000, "traders_env": "TELEGRAM_TRADE_TRADERS_OTC",
+            # OTC works $1m parents over days with /jwap (owner's call); single orders stay at $50k.
+            "max_usd": 50_000, "jwap_max_usd": 1_000_000, "traders_env": "TELEGRAM_TRADE_TRADERS_OTC",
             "cr_token_env": "CR_API_TOKEN_MM3"},
     # Treasury prop book: one strategy for all tokens, perps (no gamma roster). USD sizing only.
     "treasury": {"strategy": {}, "default_qty": {},
                  "perp_strategy": _DESKS_CFG["treasury"]["perp_strategy"],
-                 "max_usd": 50_000, "traders_env": "TELEGRAM_TRADE_TRADERS_TREASURY",
+                 "max_usd": 50_000, "jwap_max_usd": 50_000,
+                 "traders_env": "TELEGRAM_TRADE_TRADERS_TREASURY",
                  "cr_token_env": "CR_API_TOKEN_G20JPY"},
 }
 
@@ -1767,7 +1772,7 @@ def jwap_gate_at(side: str, jason: pd.DataFrame, minute: float, mid: float | Non
 def start_jwap(text: str, client: CoinRoutesClient, desk: dict, *, desk_name: str, chat_id: str,
                now: float | None = None, pid: int = 0) -> tuple[dict | None, str]:
     """Validate a /jwap and build its parent. Returns ``(parent, start message)`` or ``(None,
-    refusal)``. The FULL target is capped here (3x per-token, desk ``max_usd``, and for a token
+    refusal)``. The FULL target is capped here (3x per-token, desk ``jwap_max_usd``, and for a token
     target its notional at the touch, as prepare_order does); each child is capped again when it
     goes through prepare_order. Places nothing. Never raises."""
     now = time.time() if now is None else now
@@ -1776,7 +1781,7 @@ def start_jwap(text: str, client: CoinRoutesClient, desk: dict, *, desk_name: st
         res = resolve(cmd["token"], desk, force_perp=cmd["perp"], quote=cmd["quote"])
         order = build_order({"side": cmd["side"], "size": cmd["size"], "unit": cmd["unit"],
                              "aggression": "aggressive", "limit": None, "post": False,
-                             "maxpost": None}, res, desk["max_usd"])
+                             "maxpost": None}, res, desk["jwap_max_usd"])
     except ValueError as e:
         return None, f"❌ {e}"
     base, pair, strategy, side = res["base"], res["pair"], res["strategy"], cmd["side"]
@@ -1796,9 +1801,9 @@ def start_jwap(text: str, client: CoinRoutesClient, desk: dict, *, desk_name: st
         if not touch:
             return None, f"❌ no book for {pair} — can't cap a token-sized target. Refusing."
         notional = order["quantity"] * touch
-        if notional > desk["max_usd"]:
+        if notional > desk["jwap_max_usd"]:
             return None, (f"❌ {order['quantity']:g} {base} ≈ ${notional:,.0f} exceeds the "
-                          f"${desk['max_usd']:,.0f} cap.")
+                          f"${desk['jwap_max_usd']:,.0f} cap.")
     try:
         jason = jwap_jason(base, cmd["sigma"], now)
     except Exception as e:  # noqa: BLE001 - no candles -> no gate -> no parent
@@ -1808,7 +1813,10 @@ def start_jwap(text: str, client: CoinRoutesClient, desk: dict, *, desk_name: st
         return None, f"❌ not enough {base}USDT history for a 7d JASON — refusing."
     unit = cmd["unit"]
     child = cmd["size"] / cmd["n"]
-    child_text = (f"/trade {base} {side} size={child:.10g}{'usd' if unit == 'usd' else 'tok'} "
+    if unit == "usd" and child > desk["max_usd"]:     # each child would be refused by prepare_order
+        return None, (f"❌ each slice would be ${child:,.0f}, over the ${desk['max_usd']:,.0f} "
+                      f"per-order cap — use a longer over= or a shorter every=.")
+    child_text =(f"/trade {base} {side} size={child:.10g}{'usd' if unit == 'usd' else 'tok'} "
                   f"aggressive" + (" perp" if cmd["perp"] else "") + (" staged" if cmd["staged"] else "")
                   + (f" quote={cmd['quote'].lower()}" if cmd["quote"] else ""))
     entry = (int(now) // 60 + 1) * 60                      # the next whole minute

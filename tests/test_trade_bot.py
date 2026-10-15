@@ -1508,3 +1508,30 @@ def test_the_typed_limit_band_applies_on_otc_too():
     plan, err = tb.prepare_order("/trade BTC sell size=1000usd limit=0.00100",
                                  _TwoSidedClient(), tb.DESKS["otc"])
     assert plan is None and "slipped decimal" in err
+
+
+# --------------------------------------------------------------------------- #
+# /jwap target cap: jwap_max_usd per desk, each child still held to max_usd
+# --------------------------------------------------------------------------- #
+def test_otc_jwap_takes_a_1m_target(jason_stub):
+    p, msg = _start("/jwap comp buy size=672000 over=28d", desk="otc")
+    assert p is not None, msg
+    assert p["n"] == 8064 and p["child"] == pytest.approx(83.33, abs=0.01)
+
+
+def test_otc_jwap_is_refused_over_1m(jason_stub):
+    p, msg = _start("/jwap comp buy size=1.1m over=28d", desk="otc")
+    assert p is None and "$1,000,000 cap" in msg
+
+
+def test_otc_jwap_refuses_a_child_over_the_per_order_cap(jason_stub):
+    p, msg = _start("/jwap comp buy size=1m over=10m", desk="otc")
+    assert p is None and "per-order cap" in msg
+
+
+def test_otc_single_trade_is_still_capped_at_50k():
+    assert tb.DESKS["otc"]["max_usd"] == 50_000
+    with pytest.raises(ValueError, match=r"\$50,000 cap"):
+        tb.build_order({"side": "buy", "size": 60_000, "unit": "usd", "aggression": "aggressive",
+                        "limit": None, "post": False, "maxpost": None},
+                       tb.resolve("COMP", tb.DESKS["otc"]), tb.DESKS["otc"]["max_usd"])

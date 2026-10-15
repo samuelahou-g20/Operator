@@ -717,7 +717,9 @@ running parents instead of guessing. Same chat → desk and trader-allowlist gat
   closed-gate child is **skipped, never caught up** — `size=` is a ceiling; the study's sell side
   filled ~7–16% of children. A child due **more than 60s late** is skipped too.
 - **Order path:** the full target is capped once at start (`resolve` + `build_order`: 3× per-token,
-  desk `max_usd`; a token target also at its touch notional) and refused whole if it breaches. Each
+  desk `jwap_max_usd`; a token target also at its touch notional) and refused whole if it breaches.
+  `jwap_max_usd` is $50k on every desk except **OTC ($1m)**; a USD child over the desk's per-order
+  `max_usd` ($50k) is refused at start, since `prepare_order` would refuse every slice. Each
   child is an internal `/trade <token> <side> size=<child> aggressive [perp] [staged] [quote=]`
   through `prepare_order` + `place_prepared` — no other placement path. `aggressive` (limit 1%
   through the touch) stands in for "market".
