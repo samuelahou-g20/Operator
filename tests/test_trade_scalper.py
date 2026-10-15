@@ -134,3 +134,40 @@ def test_render_scalper_is_not_one_code_block():
     """The old reply wrapped the whole ladder in ``` — a single blob you cannot copy a field from."""
     sides = [{"side": "buy", "recs": [_ok(0.0161, "o1")]}]
     assert "```" not in tb.render_scalper_text("BILL scalper", sides, {0.0161: 1})
+
+
+# --------------------------------------------------------------------------- #
+# quote= — the spot pair's quote currency, as on /trade
+# --------------------------------------------------------------------------- #
+def _stub_book(monkeypatch, seen):
+    monkeypatch.setattr(tb, "price_venues", lambda *a, **k: ["kraken"])
+    monkeypatch.setattr(tb, "touch_on", lambda client, pair, side, venues: seen.append(pair) or 1.0)
+
+
+def test_scalper_quote_usd_quotes_the_usd_pair(monkeypatch):
+    seen = []
+    _stub_book(monkeypatch, seen)
+    plan, err = tb.prepare_scalper("/scalper laptop 5k 2 vol=400% quote=usd", object(), tb.DESKS["mm3"])
+    assert err is None, err
+    assert plan["pair"] == "LAPTOP-USD" and set(seen) == {"LAPTOP-USD"}
+    assert plan["cmd"]["vol"] == 4.0 and plan["cmd"]["days"] == 7
+
+
+def test_scalper_without_quote_still_quotes_usdt(monkeypatch):
+    seen = []
+    _stub_book(monkeypatch, seen)
+    plan, err = tb.prepare_scalper("/scalper laptop 5k 2 vol=400%", object(), tb.DESKS["mm3"])
+    assert err is None, err
+    assert plan["pair"] == "LAPTOP-USDT"
+
+
+def test_scalper_refuses_a_non_dollar_quote():
+    plan, err = tb.prepare_scalper("/scalper laptop 5k 2 quote=eur", object(), tb.DESKS["mm3"])
+    assert plan is None and "quote must be one of" in err
+
+
+def test_scalper_refuses_quote_on_a_perp(monkeypatch):
+    """A non-desk token falls through to the USDT-margined futures book; quote= must not be dropped silently."""
+    desk = tb.DESKS["mm3"]
+    plan, err = tb.prepare_scalper("/scalper zzznotadesktoken 5k 2 quote=usd", object(), desk)
+    assert plan is None and "does not apply" in err

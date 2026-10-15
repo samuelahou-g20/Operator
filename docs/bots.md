@@ -678,7 +678,8 @@ What it did: alerted when a token moved while the desk carried delta in it.
 ### `trade_bot` — `quote=` picks the spot pair's quote currency
 
 `/trade <token> <side> size=5k quote=usd`, and on the ladder
-`/trade <token> 0.26x5k 0.22x5k quote=usd`. Default is USDT, so nothing existing changes.
+`/trade <token> 0.26x5k 0.22x5k quote=usd`, and `/scalper <token> 5k 2 quote=usd`. Default is
+USDT, so nothing existing changes.
 
 The same asset can trade against several quote currencies **on different venues**: LAPTOP-USDT
 prices on KuCoin only, LAPTOP-USD on Kraken only. They are separate books with their own touch,

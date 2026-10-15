@@ -251,7 +251,7 @@ USAGE = ("Usage: /trade <token> <buy|sell> [passive|neutral|aggressive] [perp] "
 LADDER_MAX_USD = 75_000
 LADDER_MAX_LEVELS = 4      # observed max is 2 a side; 4 is headroom, not an invitation
 
-SCALPER_USAGE = ("Usage: /scalper <token> <size per order> <levels per side> [lookback] [vol=x]\n"
+SCALPER_USAGE = ("Usage: /scalper <token> <size per order> <levels per side> [lookback] [vol=x] [quote=usd]\n"
                  "e.g. /scalper bill 5000 2   ->  $5,000 x 2 a side at 1 and 2 daily sigma\n"
                  "size is USD (5000, 5k) or tokens (250000tok), as in /trade\n"
                  f"levels per side 1-{LADDER_MAX_LEVELS}; lookback 7d (default), 2w, 1m\n"
@@ -1038,13 +1038,21 @@ def prepare_scalper(text: str, client: CoinRoutesClient, desk: dict) -> tuple[di
     """Everything ``handle_scalper`` does BEFORE touching the ladder: parse -> resolve -> mid ->
     sigma -> the wanted levels. Returns ``(plan, None)`` or ``(None, refusal)``. Lifted out so
     the_operator's dry-run preview shows exactly the ladder the live bot would apply. Never raises."""
+    # `quote=` is pulled out before parse_scalper, which would read it as a lookback -- the same
+    # handling as the typed ladder.
+    quote, words = None, text.split()
     try:
-        cmd = parse_scalper(text)
-        res = resolve(cmd["token"], desk)
+        for a in [w for w in words if w.lower().startswith("quote=")]:
+            words.remove(a)
+            quote = parse_quote(a.split("=", 1)[1])
+        cmd = parse_scalper(" ".join(words))
+        res = resolve(cmd["token"], desk, quote=quote)
     except ValueError as e:
         return None, f"❌ {e}"
     base, pair, strategy = res["base"], res["pair"], res["strategy"]
     perp = pair.upper().endswith(".PERP")
+    if quote and perp:
+        return None, f"❌ {base} quotes on the desk futures book ({pair}) — quote= does not apply."
     venues = venue_labels(token_venues(base), perp)
     pxv = price_venues(client, strategy, base, perp)
     if not pxv:
