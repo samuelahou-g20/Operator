@@ -1,0 +1,21 @@
+[Unit]
+Description=Serve the JWAP execution reports on the office network (password: JWAP_WEB_PASSWORD)
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+# EDIT ME before enabling: absolute path to this repo's checkout on this machine.
+WorkingDirectory=/path/to/operator
+Environment=PATH=%h/.local/bin:/usr/bin:/bin
+# The office-network address only, not the docker bridges.
+ExecStart=%h/.local/bin/uv run python -m scripts.jwap_web --bind 172.30.50.119 --port 8090
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

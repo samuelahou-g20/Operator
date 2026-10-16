@@ -270,3 +270,25 @@ def test_a_404_on_a_price_read_is_retried():
     client.mid_on = flaky
     _poll(jwaps, client, trader, _ENTRY + 1)
     assert calls["n"] == 2 and len(trader.place_calls) == 1
+
+
+# --------------------------------------------------------------------------- #
+# /jwap report — the client page, only for this desk's parents
+# --------------------------------------------------------------------------- #
+def test_report_builds_an_html_page_for_this_desk():
+    client, trader = _Client(), _Trader()
+    jwaps, pid = _start(client)
+    _poll(jwaps, client, trader, _ENTRY + 1)
+    out = tb.jwap_report(f"/jwap report {pid}", "mm3", now=_ENTRY + 60)
+    data, name, caption = out
+    assert name.startswith("SOL_execution_") and name.endswith(".html")
+    assert data.startswith(b"<!doctype html>") and b"jwap-" not in data
+    assert caption.startswith("SOL execution report")
+
+
+def test_report_refuses_another_desks_parent_and_bad_ids():
+    client = _Client()
+    _jwaps, pid = _start(client)
+    assert tb.jwap_report(f"/jwap report #{pid}", "mm2") == f"No JWAP #{pid} on MM2."
+    assert tb.jwap_report("/jwap report 999", "mm3") == "No JWAP #999 on MM3."
+    assert tb.jwap_report("/jwap report", "mm3").startswith("Usage")

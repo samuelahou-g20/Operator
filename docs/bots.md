@@ -747,6 +747,19 @@ running parents instead of guessing. Same chat → desk and trader-allowlist gat
   order is re-sent (same id) only if it is not there. A 400 is a real rejection: recorded, not
   retried. Retries block the poll loop for at most a few seconds each.
 
+- **Report:** `/jwap report <#id>` sends a **client-facing** HTML execution report as a file to the
+  chat (this desk's parents only, running or finished), built by `scripts/jwap_report.py` from the
+  record plus Binance spot 1-minute klines (public; the only API call). JWAP house style. Benchmark:
+  a TWAP buying the same amount at every scheduled slice at the Binance 1-minute open + one tick,
+  at the JWAP fills' own fee rate; per unit = placement (opens at traded slices vs at all slices)
+  + execution-cost difference, in bps of the TWAP price. Section 2 "JASON Gate": price vs the level,
+  pivot age vs the gate. No internal ids on the page. If Binance is down the comparison is left
+  empty, never guessed. Local copy: `uv run python -m scripts.jwap_report <id> [out.html]`.
+- **Web page:** `jwap-report.timer` rebuilds every OTC parent's page + an index into
+  `results/jwap/` every 5 minutes (`--publish`, atomic writes); `jwap-web.service`
+  (`scripts/jwap_web.py`) serves that folder only at **http://172.30.50.119:8090/** behind one
+  shared password (`JWAP_WEB_PASSWORD` in `.env`, any user name). `make jwap-web` restarts it.
+
 #### The record: `data/state/jwap/<id>.jsonl` — the truth after any crash
 
 One append-only JSON line per event, fsync'd **before** the bot acts on it (`scripts/jwap_record.py`).

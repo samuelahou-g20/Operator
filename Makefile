@@ -11,13 +11,14 @@ SHELL      := /bin/bash
 SYSTEMCTL  := systemctl --user
 OPERATOR   := operator.service
 BOT_TMPL   := desk-bot@
-TIMERS     := pluto-prc.timer icp-snapshot.timer
+TIMERS     := pluto-prc.timer icp-snapshot.timer jwap-report.timer
+JWAP_WEB   := jwap-web.service
 BOTS        = $(shell $(SYSTEMCTL) list-units --all --no-legend '$(BOT_TMPL)*.service' \
                 | awk '{print $$1}' | sed 's/^●[[:space:]]*//')
 
 UNIT_DIR   := $(HOME)/.config/systemd/user
 
-.PHONY: help up down restart status logs operator operator-logs bots timers test lint check install-units list
+.PHONY: help up down restart status logs operator operator-logs bots timers test lint check install-units list jwap-web
 
 help:                     ## show this help
 	@grep -E '^[a-z%-]+:.*?## .' $(MAKEFILE_LIST) | awk -F':.*?## ' '{printf "  \033[1m%-16s\033[0m %s\n", $$1, $$2}'
@@ -72,7 +73,7 @@ timers:                   ## show the scheduled jobs and when they next fire
 
 status:                   ## one line per unit: what is up, what is not
 	@printf '%-34s %s\n' "UNIT" "STATE"
-	@for u in $(OPERATOR) $(BOTS); do \
+	@for u in $(OPERATOR) $(BOTS) $(JWAP_WEB); do \
 	    printf '%-34s %s\n' "$$u" "$$($(SYSTEMCTL) is-active $$u)"; done
 	@$(SYSTEMCTL) list-timers --no-legend $(TIMERS) | awk '{printf "%-34s next %s %s\n", $$NF, $$1, $$2}'
 	@failed=$$($(SYSTEMCTL) list-units --state=failed --no-legend '$(BOT_TMPL)*.service' $(OPERATOR) \
@@ -88,12 +89,18 @@ install-units:            ## install deploy/systemd/* with this checkout's path 
 	@# The templates carry a /path/to/operator placeholder on purpose: copying one in raw
 	@# installs a unit that cannot chdir, which is exactly how the desk went down once.
 	@for f in operator.service 'desk-bot@.service' pluto-prc.service pluto-prc.timer \
-	          icp-snapshot.service icp-snapshot.timer; do \
+	          icp-snapshot.service icp-snapshot.timer jwap-report.service jwap-report.timer \
+	          jwap-web.service; do \
 	    sed "s#/path/to/operator#$(CURDIR)#g" "deploy/systemd/$$f" > "$(UNIT_DIR)/$$f" \
 	        && echo "installed $$f -> $(CURDIR)"; done
 	$(SYSTEMCTL) daemon-reload
 	@grep -h WorkingDirectory $(UNIT_DIR)/operator.service $(UNIT_DIR)/desk-bot@.service \
 	    $(UNIT_DIR)/pluto-prc.service $(UNIT_DIR)/icp-snapshot.service
+
+jwap-web:                 ## restart the JWAP report web page (http://172.30.50.119:8090/)
+	$(SYSTEMCTL) restart $(JWAP_WEB)
+	@sleep 2 && $(SYSTEMCTL) is-active $(JWAP_WEB)
+	@journalctl --user -u $(JWAP_WEB) -n 3 --no-pager -o cat
 
 test:                     ## the full suite
 	uv run pytest -q

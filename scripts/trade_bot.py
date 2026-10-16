@@ -83,6 +83,7 @@ import matplotlib.pyplot as plt  # noqa: E402 - must follow backend selection
 from scripts.mm2_trade_log_bot import MM2_STRATEGIES  # noqa: E402
 from scripts import desk_trades  # noqa: E402 - trade-service fills live there
 from scripts import jwap_record as jrec  # noqa: E402 - the durable /jwap record
+from scripts import jwap_report as jrep  # noqa: E402 - the client report built from it
 from scripts.trade_plot import (  # noqa: E402 - market-data/PnL logic stays out of here
     MM_ENGINE,
     desk_strategies,
@@ -100,6 +101,7 @@ from src.adapters.errors import AdapterError  # noqa: E402
 from src.common.config import load_config, require_env  # noqa: E402
 from src.common.logging import get_logger  # noqa: E402
 from src.common.pluto import JASON_LEVELS_URL, get as pluto_get  # noqa: E402
+from src.common.telegram import send_document  # noqa: E402
 from src.data.fetching.binance.backfill import _get_json  # noqa: E402
 from src.signals.jason import compute_jason_vectorized  # noqa: E402
 from src.signals.jwap import SIDE_COLUMNS, jwap_gate, knowable_on_minutes  # noqa: E402
@@ -1636,7 +1638,7 @@ def handle_today(client: CoinRoutesClient, bot_user: str | None, desk: str, *,
 # --------------------------------------------------------------------------- #
 JWAP_USAGE = ("Usage: /jwap <token> <buy|sell> size=<50k|250000tok> over=<90m|6h|2d> "
               "[every=5m] [sigma=1.5] [age=1.5d] [perp] [staged] [quote=usd]\n"
-              "       /jwap status  ·  /jwap stop <#id|token|all>\n"
+              "       /jwap status  ·  /jwap stop <#id|token|all>  ·  /jwap report <#id>\n"
               "size= is a TARGET, not a promise: a child the gate is closed on is skipped, "
               "never caught up.")
 JWAP_LATE_S = 60             # a child due more than this long ago is skipped (no catch-up)
@@ -2227,6 +2229,29 @@ def handle_jwap(text: str, client: CoinRoutesClient, trader: CoinRoutesTrader, d
     return reply
 
 
+def jwap_report(text: str, desk_name: str, now: float | None = None) -> tuple[bytes, str, str] | str:
+    """``/jwap report <#id>`` -> (html bytes, filename, caption), or a reply text. Only this desk's
+    parents, running or finished (the report reads the record). Never raises."""
+    parts = text.split()
+    if len(parts) < 3 or not parts[2].lstrip("#").isdigit():
+        return "Usage: /jwap report <#id> — see /jwap status for the ids."
+    pid = int(parts[2].lstrip("#"))
+    try:
+        events = jrec.load(pid)
+    except FileNotFoundError:
+        events = []
+    created = next((e for e in events if e["kind"] == "created"), None)
+    if created is None or created["params"]["desk"] != desk_name:
+        return f"No JWAP #{pid} on {desk_name.upper()}."
+    try:
+        data, name, s = jrep.build(pid, now)
+    except Exception as e:  # noqa: BLE001 - a report must never take the money bot down
+        _log.exception("jwap #%s report failed", pid)
+        return f"❌ report for JWAP #{pid} failed: {str(e)[:200]}"
+    verbed = "sold" if s["sell"] else "bought"
+    return data, name, f"{s['base']} execution report · {verbed} {s['share']:.2%} of the target"
+
+
 _LOCK_PATH = "/tmp/mm3_trade_bot.lock"
 
 
@@ -2343,6 +2368,13 @@ def main() -> None:
                     continue
                 _log.warning("%s (%s) from user %s: %s", cmd0, desk_name, user_id, text)
                 parts = text.split()
+                if cmd0 == "/jwap" and len(parts) > 1 and parts[1].lower() == "report":
+                    out = jwap_report(text, desk_name)
+                    if isinstance(out, str):
+                        _send(api, chat_id, out)
+                    else:
+                        send_document(api, chat_id, out[0], out[1], caption=out[2], mime="text/html")
+                    continue
                 if cmd0 == "/jwap":
                     # Same desk/trader authorisation as /trade above; every child goes through
                     # prepare_order, so it inherits every /trade rail.

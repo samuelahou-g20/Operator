@@ -1,0 +1,14 @@
+[Unit]
+Description=Rebuild the published JWAP execution reports (results/jwap/)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# EDIT ME before enabling: absolute path to this repo's checkout on this machine.
+WorkingDirectory=/path/to/operator
+# User units start with a minimal PATH that excludes ~/.local/bin, where uv lives.
+Environment=PATH=%h/.local/bin:/usr/bin:/bin
+ExecStart=%h/.local/bin/uv run python -m scripts.jwap_report --publish
+StandardOutput=journal
+StandardError=journal
