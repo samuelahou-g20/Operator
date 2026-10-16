@@ -2,10 +2,12 @@
 
     uv run python -m scripts.daily_bars --source binance                          # yesterday, 1h
     uv run python -m scripts.daily_bars --source binance --start 2026-07-01 --end 2026-07-12 --universe
+    uv run python -m scripts.daily_bars --source binance --universe --data-type funding_rate
 
 Fills small-storage bars (e.g. 1h) for recent days the monthly-dump backfill can't
 reach yet, then normalizes them so `query` (processed) sees them. Binance only.
 Defaults to yesterday (UTC); the daily leg the streamer/aggregator extends live.
+``--data-type funding_rate`` does the same for perp funding (``--timeframes`` is ignored).
 """
 
 from __future__ import annotations
@@ -16,7 +18,7 @@ import pandas as pd
 
 from src.common import config as cfg
 from src.data.etl.perps import normalize as perps_normalize
-from src.data.fetching.binance import backfill
+from src.data.fetching.binance import backfill, fetcher
 
 
 def main() -> None:
@@ -30,6 +32,7 @@ def main() -> None:
     parser.add_argument("--start", help="YYYY-MM-DD; defaults to yesterday")
     parser.add_argument("--end", help="YYYY-MM-DD; defaults to yesterday")
     parser.add_argument("--market", default="perps")
+    parser.add_argument("--data-type", default="bars", choices=["bars", "funding_rate"])
     args = parser.parse_args()
 
     if args.source != "binance":
@@ -49,6 +52,12 @@ def main() -> None:
                  - pd.Timedelta(days=1)).strftime("%Y-%m-%d")
     start = args.date or args.start or yesterday
     end = args.date or args.end or yesterday
+
+    if args.data_type == "funding_rate":
+        fetcher.append_recent_funding(conf, symbols, start, end)
+        for symbol in symbols:
+            perps_normalize.normalize(args.source, symbol, "funding_rate", asset_type="perps")
+        return
 
     for timeframe in args.timeframes.split(","):
         backfill.append_recent_bars(conf, symbols, timeframe, start, end, market=args.market)

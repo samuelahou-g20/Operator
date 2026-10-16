@@ -3,7 +3,8 @@
 `fetch_daily(config, date)` pulls one day of 1m bars, funding, and open interest from
 the fapi REST API, writes them into raw/ in the SAME vendor-column layout the dumps
 use (so ETL normalize treats fetch and backfill identically), then runs the §12
-quality checks on the day's bars.
+quality checks on the day's bars. `append_recent_funding` brings funding current for any symbol
+list (the whole universe), which `fetch_daily` (configured symbols only) does not.
 
 MUST NOT: write outside raw/, normalize to canonical schema (ETL does that), or skip
 the quality checks (that distinguishes daily fetch from backfill).
@@ -11,6 +12,7 @@ the quality checks (that distinguishes daily fetch from backfill).
 
 from __future__ import annotations
 
+import urllib.error
 from typing import Any
 
 import pandas as pd
@@ -19,10 +21,12 @@ from src.common import logging as common_logging
 from src.common import paths
 from src.data import lake_io, quality
 from src.data.fetching.binance.backfill import ASSET_TYPE, SOURCE, _fetch_klines, _get_json
+from src.data.fetching.chunking import RateLimiter
 
 _log = common_logging.get_logger("daily_fetch")
 
 _MS_DAY = 86_400_000
+_FUNDING_PER_SEC = 1.5     # /fapi/v1/fundingRate allows 500 requests / 5 min per IP
 
 
 def _append_small(df: pd.DataFrame, out_dir, symbol: str, dedup_col: str) -> None:
@@ -74,6 +78,49 @@ def _fetch_funding(rest_url: str, symbol: str, start_ms: int, end_ms: int) -> pd
         "funding_interval_hours": [None] * len(rows),
         "last_funding_rate": [float(r["fundingRate"]) for r in rows],
     })
+
+
+def append_recent_funding(config: dict, symbols: list[str], start: Any, end: Any) -> None:
+    """Fill funding settlements for ``[start, end]`` (UTC days) via REST, per symbol.
+
+    A fetched settlement already stored within the same second is dropped: the monthly dumps
+    and REST can stamp one settlement a few ms apart, so exact-ms dedup would store it twice.
+    Fills gaps anywhere in the range. Paged at 1000 rows; a 400 (delisted/invalid symbol) skips
+    that symbol. Idempotent: re-running a range writes nothing new."""
+    rest_url = config["markets"]["perps"]["rest_url"]
+    limiter = RateLimiter(_FUNDING_PER_SEC)
+    start_ms = int(pd.Timestamp(start, tz="UTC").timestamp() * 1000)
+    end_ms = int((pd.Timestamp(end, tz="UTC").normalize() + pd.Timedelta(days=1)).timestamp() * 1000) - 1
+
+    for symbol in symbols:
+        out_dir = paths.data_path("raw", ASSET_TYPE, SOURCE, symbol, "funding_rate")
+        target = out_dir / f"{symbol}.parquet"
+        cursor = start_ms
+        frames: list[pd.DataFrame] = []
+        try:
+            while cursor <= end_ms:
+                limiter()
+                df = _fetch_funding(rest_url, symbol, cursor, end_ms)
+                if df.empty:
+                    break
+                frames.append(df)
+                if len(df) < 1000:
+                    break
+                cursor = int(df["calc_time"].iloc[-1]) + 1
+        except urllib.error.HTTPError as exc:
+            if exc.code == 400:
+                _log.warning("skipping %s: REST funding 400 (delisted/invalid symbol)", symbol)
+                continue
+            raise
+        if not frames:
+            continue
+        funding = pd.concat(frames, ignore_index=True)
+        if target.exists():
+            stored_s = set(pd.read_parquet(target, columns=["calc_time"])["calc_time"] // 1000)
+            funding = funding[~(funding["calc_time"] // 1000).isin(stored_s)]
+        if not funding.empty:
+            _append_small(funding, out_dir, symbol, "calc_time")
+            _log.info("appended %d REST funding rows for %s", len(funding), symbol)
 
 
 def _fetch_open_interest(rest_url: str, symbol: str, start_ms: int, end_ms: int) -> pd.DataFrame:

@@ -24,8 +24,9 @@ ask the owner** — do not invent structure or generalize.
 - **Data lake**: Binance (468 spot+perp pairs incl. delisted, 2021+), Bybit (343, ~mid-2021+),
   OKX (forward-accumulating; REST funding retention ~93 days), Hyperliquid (hourly funding 2023+,
   1h bars are a rolling ~5000-bar window — must be accumulated), FRED rates (`fred/tb3ms`, needs
-  `FRED_API_KEY` in env/`.env`). `scripts/daily_task.sh` runs the daily fetch+normalize for all
-  sources.
+  `FRED_API_KEY` in env/`.env`). `scripts/daily_task.sh` (cron 08:05 Zurich) refreshes Binance 1h
+  bars and funding for the universe, and the other sources' funding/bars/rates only for their
+  `backfill.symbols`, not the full universe. CME is not refreshed.
 - **Sharpe convention (owner directive)**: Sharpe = (E[r] − E[rf]) / vol(r) everywhere; ratios
   that ignore rf are not Sharpe ratios and are not reported.
 

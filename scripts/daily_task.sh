@@ -24,3 +24,18 @@ uv run python -m scripts.daily_bars --source binance --symbols btcusdt,ethusdt,h
 # klines endpoint; don't let it abort the essential refresh above or fail the cron job.
 uv run python -m scripts.daily_bars --source binance --universe --timeframes 1h --start "$Y" --end "$T" \
   || echo "WARN: universe refresh incomplete (non-fatal); crypto legs already refreshed"
+uv run python -m scripts.daily_bars --source binance --universe --data-type funding_rate --start "$Y" --end "$T" \
+  || echo "WARN: universe funding refresh incomplete (non-fatal)"
+
+# Funding, Hyperliquid/Bybit/OKX 1h bars and FRED rates: yesterday, for each source's configured
+# symbols (config/data/{source}.yaml backfill.symbols). Best-effort per source. Must run daily:
+# OKX keeps ~3 months of funding and Hyperliquid ~5000 1h bars, so a skipped day can be lost.
+for src in binance bybit okx hyperliquid fred; do
+  uv run python -m scripts.daily_fetch --source "$src" \
+    || echo "WARN: daily_fetch $src failed (non-fatal)"
+done
+for src in bybit okx hyperliquid; do
+  uv run python -m scripts.normalize --source "$src" --data-types funding_rate,bars --timeframes 1h \
+    || echo "WARN: normalize $src failed (non-fatal)"
+done
+uv run python -m scripts.normalize --source fred || echo "WARN: normalize fred failed (non-fatal)"
