@@ -1,4 +1,5 @@
-"""Read-only market/desk-dashboard tools: thin wrappers over the existing Telegram bots.
+"""Read-only market/desk-dashboard tools: thin wrappers over the existing Telegram bots and
+``positioning.py``.
 
 Each handler reuses a bot's own fetch + render functions verbatim (no reimplemented fetch/render
 logic here) and repackages the result as a ``ToolResult``. MUST NOT: call Telegram, open the data
@@ -13,6 +14,7 @@ import pandas as pd
 from scripts import agg_bot, jason_bot, ls_bot, twap_bot, vol_bot
 from src.common.config import load_config
 from src.common.deadline import run_with_deadline
+from src.the_operator import cache, positioning
 from src.the_operator.contract import Attachment, Context, Risk, ToolResult, ToolSpec
 
 _TEXT_LIMIT = 6000
@@ -228,4 +230,36 @@ LS_RANKING = ToolSpec(
 )
 
 
-TOOLS: list[ToolSpec] = [AGGREGATOR, JASON_LEVELS, TWAP, VOL_SURFACE, LS_RANKING]
+# --------------------------------------------------------------------------- #
+# positioning
+# --------------------------------------------------------------------------- #
+POSITIONING_TTL_S = 3600   # daily ratios and 8h funding; an hour is fresh enough and spares Binance
+
+
+def positioning_cached(ttl_s: float = POSITIONING_TTL_S) -> tuple[str, float]:
+    return cache.cached("positioning", ttl_s, positioning.snapshot)
+
+
+def _positioning(ctx: Context, args: dict) -> ToolResult:
+    text, age = positioning_cached(0 if args.get("refresh") else POSITIONING_TTL_S)
+    return ToolResult(text=f"{text}\n({cache.age_note(age)})")
+
+
+POSITIONING = ToolSpec(
+    name="positioning",
+    description=(
+        "Where the market is positioned, free and fast (~5s): Crypto Fear & Greed (today, yesterday, "
+        "7d avg, 30d range) and, for BTC/ETH/SOL/XRP/DOGE on Binance perps, the retail account "
+        "long/short ratio, the top-trader position long/short ratio and the last-24h funding sum, "
+        "each with its percentile vs the last 30 days, plus fixed-threshold flags (retail vs top "
+        "traders diverging, crowded long/short, extreme greed/fear). Use to check whether the crowd "
+        "is actually positioned the way X sentiment says. Cached 1h; refresh: true forces a new pull."
+    ),
+    input_schema={"type": "object", "properties": {"refresh": {"type": "boolean"}},
+                  "required": ["refresh"], "additionalProperties": False},
+    risk=Risk.READ,
+    handler=_positioning,
+)
+
+
+TOOLS: list[ToolSpec] = [AGGREGATOR, JASON_LEVELS, TWAP, VOL_SURFACE, LS_RANKING, POSITIONING]

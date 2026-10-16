@@ -5,7 +5,7 @@ from __future__ import annotations
 import pandas as pd
 
 from src.the_operator import cache
-from src.the_operator.tools import advisory, intel
+from src.the_operator.tools import advisory, intel, market
 
 STATS = {
     "BTC": {"zup": 2.3, "zdn": 0.1, "lt": 40, "vsrsd": 20_000},
@@ -49,6 +49,7 @@ def test_packet_degrades_per_section_and_applies_rules(monkeypatch):
     monkeypatch.setattr(advisory, "load_config", lambda p: {})
     monkeypatch.setattr(intel, "macro_cached", lambda focus, ttl: (("Macro says risk-off.", b""), 120.0))
     monkeypatch.setattr(intel, "sentiment_digest_cached", lambda ttl: ("Crowd is bearish.", 0.0))
+    monkeypatch.setattr(market, "positioning_cached", lambda ttl: ("POSITIONING · BTC crowded", 0.0))
     monkeypatch.setattr(advisory, "_section_positions",
                         lambda desk, cfg: ("sym side …\nBTC long", [{"sym": "BTC", "qty": 1, "notional": 20_000}],
                                            {"BTC": {"zup": 2.3, "zdn": 0.1, "lt": 40}}))
@@ -58,6 +59,7 @@ def test_packet_degrades_per_section_and_applies_rules(monkeypatch):
     text = advisory.build_packet("mm3", include_sentiment=True, refresh=False)
     assert "1) MACRO (cached 2m ago)\nMacro says risk-off." in text
     assert "2) SENTIMENT (fresh)\nCrowd is bearish." in text
+    assert "2b) MARKET POSITIONING (fresh)\nPOSITIONING · BTC crowded" in text
     assert "unavailable: RuntimeError: sheet down" in text
     assert "• BTC (long, $20,000): JASON z_up 2.3" in text and "• XRP (-): not held, z_up 2.5" in text
     skipped = advisory.build_packet("mm3", include_sentiment=False, refresh=False)

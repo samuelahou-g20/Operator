@@ -191,6 +191,7 @@ sheet, on the desk's instruction: the formulas change rarely, the parameters cha
 | `ls_ranking` | `ls_bot.build_ranking` | any |
 | `macro_report` | `macro_bot` (Claude web search); cached 4h, `refresh` to force | any |
 | `sentiment` | `sentiment_bot` (paid X API); cached 4h, `refresh` to force | any |
+| `positioning` | `positioning.py`: Fear & Greed + Binance retail/top-trader long/short and 24h funding for five majors vs their last 30 days, with crowding flags (free public APIs); cached 1h, also section 2b of `desk_view` | any |
 | **advisory / awareness** | | |
 | `desk_view` | evidence packet: macro → sentiment → positions (`hedge_bot`) + gamma deltas (`agg_bot`) → LS ranking (`ls_bot`) → rule flags (`tools/advisory.py`) | mm3 mm2 treasury |
 | `buzz` | X posts from `config/operator/following.yaml` + CoinGecko trending → themes, tickers, evidence, tradability, mention velocity (`buzz.py`); cached 4h | any |

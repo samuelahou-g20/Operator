@@ -1,6 +1,7 @@
 """``desk_view``: the evidence packet an advisory answer is written from, in the owner's order.
 
     1. macro (Claude web search, cached)   2. X sentiment digest (cached)
+    2b. market positioning: Fear & Greed, Binance long/short and funding (free, cached 1h)
     3. our positioning: futures-book positions + gamma-book deltas
     4. JASON stretch, trend, vol, VS-RSD for every held name and the LS universe
     5. deterministic RULES: z >= STRETCH_Z up -> trim/sell candidate, down -> buy/cover candidate,
@@ -28,7 +29,7 @@ from src.common.config import load_config
 from src.the_operator import cache
 from src.the_operator.contract import Context, Risk, ToolResult, ToolSpec
 from src.the_operator.desk import cr_token
-from src.the_operator.tools import intel
+from src.the_operator.tools import intel, market
 
 STRETCH_Z = 2.0        # owner's rule: |z| >= 2 is a mean-reversion trigger
 SIZE_HI = 1.5          # |position| > SIZE_HI x |VS-RSD|  -> oversized for the name's vol
@@ -171,6 +172,7 @@ def build_packet(desk: str, include_sentiment: bool, refresh: bool) -> str:
     jobs = {
         "macro": lambda: intel.macro_cached("global", ttl),
         "sentiment": (lambda: intel.sentiment_digest_cached(ttl)) if include_sentiment else (lambda: None),
+        "market_pos": lambda: market.positioning_cached(0 if refresh else market.POSITIONING_TTL_S),
         "positions": lambda: _section_positions(desk, cfg),
         "gamma": lambda: _section_gamma(desk),
         "universe": lambda: _section_universe(cfg),
@@ -194,6 +196,7 @@ def build_packet(desk: str, include_sentiment: bool, refresh: bool) -> str:
         senti = txt("sentiment", lambda r: f"({cache.age_note(r[1])})\n{r[0][:2000]}")
     else:
         senti = "skipped by request"
+    market_pos = txt("market_pos", lambda r: f"({cache.age_note(r[1])})\n{r[0]}")
     pos_text = txt("positions", lambda r: r[0])
     gamma = txt("gamma", lambda r: r)
     uni_text = txt("universe", lambda r: r[0])
@@ -210,6 +213,7 @@ def build_packet(desk: str, include_sentiment: bool, refresh: bool) -> str:
         f"DESK VIEW · {desk} · {now}", RULE,
         "1) MACRO " + macro, RULE,
         "2) SENTIMENT " + senti, RULE,
+        "2b) MARKET POSITIONING " + market_pos, RULE,
         "3) POSITIONING\n" + pos_text, gamma, RULE,
         "4) UNIVERSE\n" + uni_text, RULE,
         f"5) RULES (z ≥ {STRETCH_Z:g} stretch; sign vs LT trend; size vs VS-RSD {SIZE_LO}-{SIZE_HI}×)\n"
@@ -226,7 +230,8 @@ DESK_VIEW = ToolSpec(
     name="desk_view",
     description=(
         "The full evidence packet for an advisory answer, in the desk's reasoning order: 1) macro "
-        "report, 2) X sentiment digest, 3) our positioning (futures-book positions with JASON z and "
+        "report, 2) X sentiment digest, 2b) market positioning (Fear & Greed, Binance retail vs "
+        "top-trader long/short, funding, crowding flags), 3) our positioning (futures-book positions with JASON z and "
         "LT trend; gamma-book net deltas), 4) the LS universe ranking (trend, JASON z, vol, regime, "
         "vol-scaled resting-state delta VS-RSD, L/S signal), 5) deterministic rule flags: |z| ≥ 2 "
         "stretch read against our position, position against LT trend, size vs VS-RSD. Call this "

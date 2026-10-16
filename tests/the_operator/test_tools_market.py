@@ -16,7 +16,7 @@ def _ctx(desk: str = "mm3") -> Context:
 
 def test_tool_names_are_unique():
     names = [t.name for t in market.TOOLS]
-    assert names == ["aggregator", "jason_levels", "twap", "vol_surface", "ls_ranking"]
+    assert names == ["aggregator", "jason_levels", "twap", "vol_surface", "ls_ranking", "positioning"]
     assert len(set(names)) == len(names)
 
 
