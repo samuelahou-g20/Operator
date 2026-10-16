@@ -38,14 +38,6 @@ def test_publish_writes_one_page_per_desk_parent_and_an_index(tmp_path):
     assert not list(tmp_path.glob("*.tmp"))                         # atomic writes leave nothing
 
 
-def test_a_finished_parent_is_not_rebuilt_once_published(tmp_path):
-    _parent(1, "otc", done=True)
-    rep.publish("otc", tmp_path, now=_E + 600)
-    before = (tmp_path / "1.html").stat().st_mtime_ns
-    rep.publish("otc", tmp_path, now=_E + 900)
-    assert (tmp_path / "1.html").stat().st_mtime_ns == before
-
-
 @pytest.fixture
 def server(tmp_path, monkeypatch):
     monkeypatch.setattr(web, "PUBLISH_DIR", tmp_path)

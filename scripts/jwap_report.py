@@ -569,7 +569,7 @@ def _write_atomic(path: Path, data: bytes) -> None:
 
 def publish(desk: str = "otc", out_dir: Path | None = None, now: float | None = None) -> list[dict]:
     """Rewrite ``<id>.html`` for every ``desk`` parent, and ``index.html`` listing them, newest
-    first. A finished parent whose page was written after it finished is not rebuilt."""
+    first."""
     now = time.time() if now is None else now
     out = out_dir or PUBLISH_DIR
     out.mkdir(parents=True, exist_ok=True)
@@ -583,14 +583,8 @@ def publish(desk: str = "otc", out_dir: Path | None = None, now: float | None = 
         if created is None or created["params"]["desk"] != desk:
             continue
         page = out / f"{pid}.html"
-        done = next((e for e in events if e["kind"] == "done"), None)
-        stale = done is None or not page.exists() or page.stat().st_mtime < datetime.fromisoformat(
-            done["ts"]).timestamp()
-        if stale:
-            data, _name, summ = build(pid, now)
-            _write_atomic(page, data)
-        else:
-            summ = summarise(events, now)
+        data, _name, summ = build(pid, now)
+        _write_atomic(page, data)
         rows.append({"id": pid, "s": summ, "updated": page.stat().st_mtime})
     _write_atomic(out / "index.html", render_index(rows, desk, now).encode("utf-8"))
     return rows
