@@ -63,14 +63,14 @@ SECTIONS = [
                   ("KOSPI", ("web", "KOSPI"))]),
     ("CRYPTO", [("BTC", ("bin", "BTCUSDT")), ("ETH", ("bin", "ETHUSDT")),
                 ("HYPE", ("bin", "HYPEUSDT"))]),
-    ("FX", [("EUR/USD", ("web", "EURUSD")), ("USD/JPY", ("web", "USDJPY")),
+    ("FX", [("DXY", ("web", "DXY")), ("EUR/USD", ("web", "EURUSD")), ("USD/JPY", ("web", "USDJPY")),
             ("AUD/USD", ("web", "AUDUSD"))]),
     ("RATES", [("US 2Y", ("web", "US2Y")), ("US 10Y", ("web", "US10Y"))]),
     ("COMMODITIES", [("Gold", ("bin", "XAUUSDT")), ("Silver", ("bin", "XAGUSDT")),
                      ("WTI", ("bin", "CLUSDT"))]),
     ("VOL", [("VIX", ("web", "VIX")), ("BVIV", ("web", "BVIV"))]),
 ]
-WEB_KEYS = ["SP500", "NDX", "KOSPI", "EURUSD", "USDJPY", "AUDUSD", "US2Y", "US10Y", "VIX", "BVIV"]
+WEB_KEYS = ["SP500", "NDX", "KOSPI", "DXY", "EURUSD", "USDJPY", "AUDUSD", "US2Y", "US10Y", "VIX", "BVIV"]
 
 MACRO_SYSTEM = """You are a markets desk analyst writing a MACRO REPORT for a trading \
 desk group chat. It can be produced at any time of day; all times in CET.
@@ -108,13 +108,13 @@ research or tool use, no "let me..." / "now I'll..." lines, no preamble, no post
 
 MARKET_SYSTEM = """You fetch current market data via web search and return STRICT JSON only.
 
-Return a JSON object whose keys are exactly: SP500, NDX, KOSPI, EURUSD, USDJPY, AUDUSD, US2Y, \
-US10Y, VIX, BVIV. Each maps to an object {"last": "<string>", "chg": "<string>"}.
+Return a JSON object whose keys are exactly: SP500, NDX, KOSPI, DXY, EURUSD, USDJPY, AUDUSD, \
+US2Y, US10Y, VIX, BVIV. Each maps to an object {"last": "<string>", "chg": "<string>"}.
 - last: current level as a short string — SP500 = S&P 500 front-month future in index points \
 (e.g. 6,140); NDX = Nasdaq-100 front-month future in index points (e.g. 22,150); KOSPI index \
-points; EURUSD/AUDUSD as a rate (e.g. 1.0842); USDJPY as a rate (e.g. 156.20); US2Y/US10Y as a \
+points; DXY = US Dollar Index level (e.g. 104.25); EURUSD/AUDUSD as a rate (e.g. 1.0842); USDJPY as a rate (e.g. 156.20); US2Y/US10Y as a \
 yield percent (e.g. "4.28%"); VIX as a level; BVIV (Bitcoin implied-vol index) as a level.
-- chg: daily change WITH sign — percent for SP500/NDX/KOSPI/EURUSD/USDJPY/AUDUSD/VIX/BVIV (e.g. \
+- chg: daily change WITH sign — percent for SP500/NDX/KOSPI/DXY/EURUSD/USDJPY/AUDUSD/VIX/BVIV (e.g. \
 "+0.4%"); basis points for US2Y/US10Y (e.g. "+3bp").
 - If a market is CLOSED right now (e.g. Seoul overnight/holiday for KOSPI, or the weekend), \
 report the change over its MOST RECENT completed trading session (prior close -> last close), \

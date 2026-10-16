@@ -122,6 +122,17 @@ The volume watch **announces sustained changes, not states**, once per clock hou
 coin must stay outside the band for two scans, and whatever is already outside it at the first scan
 after a restart is marked as known and never replayed (`watch.baseline`).
 
+**Morning brief** (`brief.py`, daily at 07:00 UTC, every day): an information digest, never trade
+ideas or comments on our book (the owner's call). Sections: 🧭 the day's theme · 🏛 Macro & rates ·
+🌍 Geopolitics · 💻 Tech & AI · ₿ Crypto · 📅 Today (UTC), one fact with its number per bullet, from
+`macro_report` (its snapshot PNG posts first), `sentiment`, `positioning`, `prediction_markets` and
+`buzz`. Posted in `OPERATOR_BRIEF_CHATS` (MM3 Trading) through the normal request path, so it is
+journaled like any request, as a non-trader (policy refuses every money tool). Those five inputs are
+built side by side from 06:50 (`brief.prebuild`): the SDK's tool runner runs one turn's tool calls one
+after another, which made a brief take ~9 minutes. A restart after 07:00 skips that day rather than
+posting late. `/operator brief` does the same on demand (~5 min, buzz's web research is the long
+pole). Paid inputs once a day: X ≈ $1.90 (digest + buzz posts) plus the model and web-search calls.
+
 ## What survives a restart
 
 - **`state.py`** — pending money proposals and the live-order fill watchlist, one JSON file
@@ -170,6 +181,7 @@ sheet, on the desk's instruction: the formulas change rarely, the parameters cha
 | ✅ Confirm / ❌ Abort buttons (or `/operator confirm <code>` / `abort <code>`) | the requester of that preview only | release (re-priced, sent `staged`) or drop a pending money proposal |
 | `/operator reset` | anyone | clear this chat's conversation memory (8-hour idle TTL otherwise) |
 | `/operator halt` / `resume` | `OPERATOR_ADMINS` only | kill switch: every tool call is denied while halted |
+| `/operator brief` | anyone | post the morning brief now, in this chat (~5 min; runs as a non-trader, like the 07:00 one) |
 
 ## Tools
 

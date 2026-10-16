@@ -26,14 +26,21 @@ def _client() -> anthropic.Anthropic:
     return anthropic.Anthropic()
 
 
+def _snapshot_text(sections: list[tuple[str, list[tuple[str, str, str]]]]) -> str:
+    """The snapshot table as text: the PNG alone left the model without gold, FX or rates."""
+    rows = [f"{name}: " + " · ".join(f"{label} {last} ({chg})" for label, last, chg in built)
+            for name, built in sections if built]
+    return "MARKET SNAPSHOT (live Binance + web quotes)\n" + "\n".join(rows)
+
+
 def macro_cached(focus: str, ttl_s: float = cache.DEFAULT_TTL_S) -> tuple[tuple[str, bytes], float]:
     """``((report, png), age_s)`` — one web-search run per focus per TTL (owner: macro does not
-    change materially within a few hours)."""
+    change materially within a few hours). The report ends with the snapshot table as text."""
     def build() -> tuple[str, bytes]:
         client = _client()
         report = macro_bot.macro_report(client, focus)
-        png = macro_bot.render_table_png(macro_bot.build_market_sections(client, load_config("data/binance.yaml")))
-        return report, png
+        sections = macro_bot.build_market_sections(client, load_config("data/binance.yaml"))
+        return f"{report}\n\n{_snapshot_text(sections)}", macro_bot.render_table_png(sections)
     return cache.cached(f"macro:{focus}", ttl_s, build)
 
 

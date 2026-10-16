@@ -48,13 +48,16 @@ def test_macro_report_unknown_focus_is_an_error_text():
 def test_macro_report_happy_path(monkeypatch):
     _no_env(monkeypatch)
     monkeypatch.setattr(macro_bot, "macro_report", lambda client, focus: f"MACRO — {focus}")
-    monkeypatch.setattr(macro_bot, "build_market_sections", lambda client, cfg: [("EQUITIES", [])])
+    monkeypatch.setattr(macro_bot, "build_market_sections",
+                        lambda client, cfg: [("EQUITIES", []), ("COMMODITIES", [("Gold", "4,210", "+0.6%")])])
     monkeypatch.setattr(macro_bot, "render_table_png", lambda sections: b"MACROPNG")
     monkeypatch.setattr(intel, "load_config", lambda path: {})
 
     result = intel.MACRO_REPORT.handler(_ctx(), {"focus": "global"})
 
     assert result.text.startswith("MACRO — global") and "(fresh)" in result.text
+    assert "MARKET SNAPSHOT" in result.text and "COMMODITIES: Gold 4,210 (+0.6%)" in result.text
+    assert "EQUITIES:" not in result.text                 # an empty section is left out
     assert len(result.attachments) == 1
     att = result.attachments[0]
     assert att.kind == "photo" and att.data == b"MACROPNG"

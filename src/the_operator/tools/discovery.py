@@ -14,15 +14,19 @@ from src.the_operator import buzz, cache
 from src.the_operator.contract import Context, Risk, ToolResult, ToolSpec
 
 
+def buzz_cached(hours: int, topic: str | None, ttl_s: float = cache.DEFAULT_TTL_S) -> tuple[dict, float]:
+    """``(scan, age_s)``; shared with the morning brief, which builds it ahead of the model."""
+    require_env("ANTHROPIC_API_KEY")
+    client = anthropic.Anthropic()
+    return cache.cached(f"buzz:{hours}:{(topic or '').lower()}", ttl_s,
+                        lambda: buzz.scan(client, hours, topic))
+
+
 def _buzz(ctx: Context, args: dict) -> ToolResult:
     hours, refresh, card, topic = args["hours"], args["refresh"], args["card"], args["topic"]
     if not 1 <= hours <= 72:
         return ToolResult(text="❌ hours must be between 1 and 72")
-    require_env("ANTHROPIC_API_KEY")
-    client = anthropic.Anthropic()
-    cache_key = f"buzz:{hours}:{(topic or '').lower()}"
-    value, age = cache.cached(cache_key, cache.DEFAULT_TTL_S if not refresh else 0,
-                              lambda: buzz.scan(client, hours, topic))
+    value, age = buzz_cached(hours, topic, cache.DEFAULT_TTL_S if not refresh else 0)
     return ToolResult(text=f"{buzz.render(value)}\n({cache.age_note(age)})", verbatim=bool(card))
 
 

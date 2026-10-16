@@ -28,7 +28,7 @@ from src.common import telegram
 from src.common.config import require_env
 from src.common.logging import get_logger
 from src.the_operator import (
-    agent, chatlog, desk, execution, executor, policy, render, state, watch,
+    agent, brief, chatlog, desk, execution, executor, policy, render, state, watch,
 )
 from src.the_operator.contract import Attachment, Context, ToolSpec
 from src.the_operator.journal import Journal
@@ -61,7 +61,8 @@ HELP = (
     "\n"
     "**I speak first** — every :00 and :30, what is not quoting and why; once an hour, a "
     "coin whose share left the band. Reply that a share is intended and I will leave that coin "
-    "alone for the day.\n"
+    "alone for the day. Every day at 07:00 UTC, the morning brief (`/operator brief` posts it "
+    "now, in this chat).\n"
     "\n"
     "**Tell me things** — `/operator remember NEAR is quoted by mm5` keeps a desk note I read "
     "on every later request.\n"
@@ -96,7 +97,7 @@ def parse(text: str) -> tuple[str, str] | None:
         return None
     rest = parts[1].strip() if len(parts) > 1 else ""
     head, _, tail = rest.partition(" ")
-    if head.lower() in {"help", "status", "why", "reset", "halt", "resume", "confirm", "abort"}:
+    if head.lower() in {"help", "status", "why", "reset", "halt", "resume", "confirm", "abort", "brief"}:
         return head.lower(), tail.strip()
     return "ask", rest
 
@@ -363,6 +364,11 @@ class Gateway:
             self._say(chat_id, "Conversation memory cleared for this chat.")
         elif sub in {"halt", "resume"}:
             self.admin(sub, chat_id, user_id, user_name)
+        elif sub == "brief":                     # the daily morning brief, on demand, in this chat
+            ctx = brief.context(desk_name, chat_id, user_id, user_name)
+            self._say(chat_id, "Building the morning brief (about 5 minutes)…")
+            threading.Thread(target=brief.on_demand, args=(self.ask, ctx), daemon=True,
+                             name=f"operator-{ctx.request_id}").start()
         elif sub == "confirm":
             if rest.split():
                 self.confirm(rest.split()[0], chat_id, user_id, user_name)
@@ -501,6 +507,7 @@ def main() -> None:
     for chat_id in sorted(served):
         watch_chats[pins[chat_id]].append(chat_id)
     watch.start(dict(watch_chats), gw._say)   # posts when a desk's market making stops quoting
+    brief.start(gw.ask, pins, served)         # the 07:00 UTC morning brief
     _log.info("Operator started (phase %s, model %s); serving %s; %d tools",
               policy.PHASE, agent.MODEL, sorted(served), len(TOOLS))
     while True:
