@@ -194,6 +194,7 @@ sheet, on the desk's instruction: the formulas change rarely, the parameters cha
 | `macro_report` | `macro_bot` (Claude web search); cached 4h, `refresh` to force | any |
 | `sentiment` | `sentiment_bot` (paid X API); cached 4h, `refresh` to force | any |
 | `positioning` | `positioning.py`: Fear & Greed + Binance retail/top-trader long/short and 24h funding for five majors vs their last 30 days, with crowding flags (free public APIs); cached 1h, also section 2b of `desk_view` | any |
+| `prediction_markets` | `polymarket.py`: Polymarket odds (Fed/rates, economy, crypto, geopolitics; top outcomes, 1-day change, 10+ pt movers), markets resolving within 3 days skipped; via the `nordlayer-pm` VPN proxy container (`POLYMARKET_PROXY`), as Polymarket is DNS-blocked here; cached 1h, also section 2c of `desk_view` | any |
 | **advisory / awareness** | | |
 | `desk_view` | evidence packet: macro → sentiment → positions (`hedge_bot`) + gamma deltas (`agg_bot`) → LS ranking (`ls_bot`) → rule flags (`tools/advisory.py`) | mm3 mm2 treasury |
 | `buzz` | X posts from `config/operator/following.yaml` + CoinGecko trending → themes, tickers, evidence, tradability, mention velocity (`buzz.py`); cached 4h | any |

@@ -1,5 +1,5 @@
 """Read-only market/desk-dashboard tools: thin wrappers over the existing Telegram bots and
-``positioning.py``.
+``positioning.py`` / ``polymarket.py``.
 
 Each handler reuses a bot's own fetch + render functions verbatim (no reimplemented fetch/render
 logic here) and repackages the result as a ``ToolResult``. MUST NOT: call Telegram, open the data
@@ -14,7 +14,7 @@ import pandas as pd
 from scripts import agg_bot, jason_bot, ls_bot, twap_bot, vol_bot
 from src.common.config import load_config
 from src.common.deadline import run_with_deadline
-from src.the_operator import cache, positioning
+from src.the_operator import cache, polymarket, positioning
 from src.the_operator.contract import Attachment, Context, Risk, ToolResult, ToolSpec
 
 _TEXT_LIMIT = 6000
@@ -262,4 +262,37 @@ POSITIONING = ToolSpec(
 )
 
 
-TOOLS: list[ToolSpec] = [AGGREGATOR, JASON_LEVELS, TWAP, VOL_SURFACE, LS_RANKING, POSITIONING]
+# --------------------------------------------------------------------------- #
+# prediction_markets
+# --------------------------------------------------------------------------- #
+PREDICTION_TTL_S = 3600
+
+
+def prediction_markets_cached(ttl_s: float = PREDICTION_TTL_S) -> tuple[str, float]:
+    return cache.cached("prediction_markets", ttl_s, polymarket.snapshot)
+
+
+def _prediction_markets(ctx: Context, args: dict) -> ToolResult:
+    text, age = prediction_markets_cached(0 if args.get("refresh") else PREDICTION_TTL_S)
+    return ToolResult(text=f"{text}\n({cache.age_note(age)})")
+
+
+PREDICTION_MARKETS = ToolSpec(
+    name="prediction_markets",
+    description=(
+        "Polymarket odds, free (~5s): the most-traded open markets on Fed/rates, the economy, crypto "
+        "and geopolitics, each with its top outcomes' implied probability and 1-day change in "
+        "points, plus flags for any market that moved 10+ points in a day. Markets resolving within "
+        "3 days are left out. Use for what the money-backed crowd expects (Fed path, BTC levels, "
+        "Iran/Israel, elections). Goes through the desk's VPN proxy; if that is down it says so. "
+        "Cached 1h; refresh: true forces a new pull."
+    ),
+    input_schema={"type": "object", "properties": {"refresh": {"type": "boolean"}},
+                  "required": ["refresh"], "additionalProperties": False},
+    risk=Risk.READ,
+    handler=_prediction_markets,
+)
+
+
+TOOLS: list[ToolSpec] = [AGGREGATOR, JASON_LEVELS, TWAP, VOL_SURFACE, LS_RANKING, POSITIONING,
+                         PREDICTION_MARKETS]
