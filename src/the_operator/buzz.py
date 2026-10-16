@@ -25,6 +25,9 @@ MODEL = "claude-opus-5"
 COINGECKO_TRENDING = "https://api.coingecko.com/api/v3/search/trending"
 X_CHUNK = 25            # X recent-search 512-char query limit
 X_CAP_PER_CHUNK = 150
+# The extraction JSON runs ~3.7k tokens on a busy day; at 4000 it was cut mid-object and failed to
+# parse on both attempts. Only tokens actually written are billed.
+EXTRACT_MAX_TOKENS = 8000
 MENTIONS_FILE = STATE_DIR / "operator" / "buzz" / "mentions.json"
 MENTIONS_KEEP = 50
 _UNIVERSE_SOURCES = ("binance", "bybit", "okx", "hyperliquid")
@@ -124,7 +127,7 @@ def _format_tweets(tweets: list[dict]) -> str:
 
 def _call_extract(client: anthropic.Anthropic, user_content: str) -> str:
     resp = client.messages.create(
-        model=MODEL, max_tokens=4000, system=_EXTRACT_SYSTEM,
+        model=MODEL, max_tokens=EXTRACT_MAX_TOKENS, system=_EXTRACT_SYSTEM,
         output_config={"effort": "low"},
         messages=[{"role": "user", "content": user_content}],
     )
