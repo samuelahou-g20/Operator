@@ -136,3 +136,11 @@ def _cold_cache():
     cache.clear()
     yield
     cache.clear()
+
+
+def test_sentiment_topic_defaults_to_crowd(monkeypatch):
+    _no_env(monkeypatch)
+    seen = {}
+    monkeypatch.setattr(sentiment_bot, "fetch_tweets", lambda topic, scope: seen.update(scope=scope) or [])
+    intel.SENTIMENT.handler(_ctx(), {"topic": "near-default", "scope": None})
+    assert seen == {"scope": "crowd"}

@@ -34,7 +34,7 @@ from datetime import datetime, timedelta, timezone
 import anthropic
 import requests
 
-from src.common.config import require_env
+from src.common.config import load_config, require_env
 from src.common.logging import get_logger
 from src.common.telegram import drain_backlog, poll_updates
 
@@ -43,7 +43,7 @@ _log = get_logger("sentiment_bot")
 MODEL = "claude-sonnet-5"
 X_SEARCH = "https://api.x.com/2/tweets/search/recent"
 MAX_TWEETS = 300           # single-topic cost cap: ~$MAX_TWEETS * $0.005 = ~$1.50
-MAX_PER_THEME = 50         # digest: per-theme cap (8 themes * 50 * $0.005 = ~$2.00/digest)
+MAX_PER_THEME = 20         # digest: per-theme cap = what the digest sends Claude (8 * 20 * $0.005 = ~$0.80)
 _PER_PAGE = 100            # X recent-search max_results ceiling
 WINDOW_HOURS = 48          # look-back window
 SORT_ORDER = "relevancy"   # X ranks by engagement/quality — ~90x more signal than "recency" (bots)
@@ -79,25 +79,30 @@ TOPICS = {
     "macro": "(macro OR CPI OR inflation OR recession OR yields)",
 }
 
-# Handles the desk follows (WITHOUT @). Their recent tweets are pulled into the digest as a
-# high-signal stream (weighted + tagged by Claude); also used by `/sentiment <topic> infl` to
-# scope a single-topic pull. Capped at 25 per query (recent-search 512-char query limit).
-FOLLOWING: list[str] = [
-    "mikealfred", "fundstrat", "Mattertrades", "cryptoknight890", "KillaXBT",
-    "IvanOnTech", "cz_binance", "VitalikButerin", "Truecrypto", "CryptoHayes",
-]
-FOLLOWING_CAP = 60          # max followed-account tweets pulled for the digest
+# Handles the desk follows (WITHOUT @), shared with the Operator's `buzz` scan. Their recent
+# tweets are pulled into the digest as a high-signal stream (weighted + tagged by Claude); also
+# used by `/sentiment <topic> infl` to scope a single-topic pull. Read at import: restart to pick
+# up edits.
+FOLLOWING: list[str] = load_config("operator/following.yaml").get("x_accounts") or []
+FOLLOWING_CAP = 60          # max followed-account tweets pulled for the digest (all sent to Claude)
+# Handles per query, to stay under recent-search's 512-char limit (fewer when a keyword rides along).
+_FROM_CHUNK = 25
+_FROM_CHUNK_KW = 20
 
 
 # --------------------------------------------------------------------------- #
 # X API pull (cost-capped)
 # --------------------------------------------------------------------------- #
-def _build_query(topic: str, scope: str) -> str:
+def _from_chunks(size: int) -> list[str]:
+    return ["(" + " OR ".join(f"from:{h}" for h in FOLLOWING[i:i + size]) + ")"
+            for i in range(0, len(FOLLOWING), size)]
+
+
+def _build_query(topic: str, scope: str, handles: str = "") -> str:
     kw = TOPICS.get(topic.lower(), f"({topic})")
     parts = [kw, "-is:retweet", "lang:en"]
-    if scope == "infl" and FOLLOWING:
-        handles = " OR ".join(f"from:{h}" for h in FOLLOWING[:20])
-        parts.insert(1, f"({handles})")
+    if scope == "infl" and handles:
+        parts.insert(1, handles)
     return " ".join(parts)
 
 
@@ -157,8 +162,16 @@ def _pull(query: str, cap: int, bearer: str, start: str, sort: str = SORT_ORDER)
 
 
 def fetch_tweets(topic: str, scope: str) -> list[dict]:
-    """Single-topic pull (`/sentiment <topic>`), hard-capped at MAX_TWEETS."""
-    return _pull(_build_query(topic, scope), MAX_TWEETS, require_env("X_BEARER_TOKEN"), _start_time())
+    """Single-topic pull (`/sentiment <topic>`), hard-capped at MAX_TWEETS in total."""
+    bearer, start = require_env("X_BEARER_TOKEN"), _start_time()
+    if scope != "infl" or not FOLLOWING:
+        return _pull(_build_query(topic, scope), MAX_TWEETS, bearer, start)
+    out: list[dict] = []
+    for handles in _from_chunks(_FROM_CHUNK_KW):
+        if len(out) >= MAX_TWEETS:
+            break
+        out.extend(_pull(_build_query(topic, scope, handles), MAX_TWEETS - len(out), bearer, start))
+    return out
 
 
 def fetch_themes() -> list[tuple[str, list[dict]]]:
@@ -172,8 +185,13 @@ def fetch_following() -> list[dict]:
     FOLLOWING is unset. Scoped to the accounts, not to keywords — Claude routes them to themes."""
     if not FOLLOWING:
         return []
-    q = "(" + " OR ".join(f"from:{h}" for h in FOLLOWING[:25]) + ") -is:retweet lang:en"
-    return _pull(q, FOLLOWING_CAP, require_env("X_BEARER_TOKEN"), _start_time(), sort="recency")
+    bearer, start = require_env("X_BEARER_TOKEN"), _start_time()
+    out: list[dict] = []
+    for handles in _from_chunks(_FROM_CHUNK):
+        # cap split by handle count so a small trailing chunk doesn't get half the budget
+        cap = max(1, FOLLOWING_CAP * handles.count("from:") // len(FOLLOWING))
+        out.extend(_pull(f"{handles} -is:retweet lang:en", cap, bearer, start, sort="recency"))
+    return out
 
 
 # --------------------------------------------------------------------------- #
@@ -235,10 +253,10 @@ def build_digest(client: anthropic.Anthropic, themed: list[tuple[str, list[dict]
         top = sorted(tweets, key=lambda t: t["likes"] + t["impressions"], reverse=True)[:n]
         return "\n".join(f"[@{t['user']} {t['likes']}L] {t['text'][:200]}" for t in top)
 
-    blocks = [f"=== {label} ({len(tw)} tweets) ===\n{_top(tw, 20) or '(none)'}" for label, tw in themed]
+    blocks = [f"=== {label} ({len(tw)} tweets) ===\n{_top(tw, MAX_PER_THEME) or '(none)'}" for label, tw in themed]
     if followed:
         blocks.append(f"=== FOLLOWED ACCOUNTS ({len(followed)} tweets — weight heavily, tag them) "
-                      f"===\n{_top(followed, 30)}")
+                      f"===\n{_top(followed, len(followed))}")
     user = (f"Timestamp: {stamp}. Themes and their top tweets below. Write the digest now.\n\n"
             + "\n\n".join(blocks))
     resp = client.messages.create(model=MODEL, max_tokens=4000, system=_DIGEST_SYSTEM,
@@ -271,9 +289,9 @@ def structured_digest(client: anthropic.Anthropic, themed: list[tuple[str, list[
         top = sorted(tweets, key=lambda t: t["likes"] + t["impressions"], reverse=True)[:n]
         return "\n".join(f"[@{t['user']} {t['likes']}L] {t['text'][:200]}" for t in top)
 
-    blocks = [f"=== {label} ({len(tw)} tweets) ===\n{_top(tw, 20) or '(none)'}" for label, tw in themed]
+    blocks = [f"=== {label} ({len(tw)} tweets) ===\n{_top(tw, MAX_PER_THEME) or '(none)'}" for label, tw in themed]
     if followed:
-        blocks.append(f"=== FOLLOWED ACCOUNTS ({len(followed)}) ===\n{_top(followed, 30)}")
+        blocks.append(f"=== FOLLOWED ACCOUNTS ({len(followed)}) ===\n{_top(followed, len(followed))}")
     order = ", ".join(label for label, _ in themed)
     user = (f"Date: {stamp}. Themes in order: {order}. Tweets below. Return the JSON now.\n\n"
             + "\n\n".join(blocks))
@@ -370,7 +388,7 @@ def main() -> None:
                     report = build_digest(client, themed, followed, stamp)
                 else:                                      # /sentiment <topic> [crowd|infl]
                     topic = parts[1]
-                    scope = parts[2].lower() if len(parts) > 2 else ("infl" if FOLLOWING else "crowd")
+                    scope = parts[2].lower() if len(parts) > 2 else "crowd"
                     _send(api, chat_id, f"Reading X sentiment for {topic} ({scope})…")
                     tweets = fetch_tweets(topic, scope)
                     _log.info("single: %d tweets for %s (%s) — est $%.2f", len(tweets), topic,

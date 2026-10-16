@@ -92,7 +92,7 @@ def _sentiment(ctx: Context, args: dict) -> ToolResult:
     if topic is None:
         report, age = sentiment_digest_cached(ttl)
         return ToolResult(text=f"{report}\n\n({cache.age_note(age)})")
-    eff_scope = scope or ("infl" if sentiment_bot.FOLLOWING else "crowd")
+    eff_scope = scope or "crowd"
 
     def build() -> str:
         tweets = sentiment_bot.fetch_tweets(topic, eff_scope)
@@ -112,9 +112,9 @@ SENTIMENT = ToolSpec(
         "alts, tech/AI stocks, macro/Fed, earnings, ...) with a -1..+1 score per theme; a topic "
         "string (e.g. 'btc', 'fed', or any free-text query) gives a single-topic read instead. "
         "scope only applies with a topic: 'crowd' = general X search, 'infl' = restricted to a "
-        "curated list of desk-followed accounts; null picks 'infl' when a followed list exists, "
-        "else 'crowd'. Results are cached 4h; refresh: true forces a new pull. IMPORTANT: a fresh "
-        "pull calls the paid X API (~$1.50 single topic, ~$2 digest). Call it when the user asks for "
+        "curated list of desk-followed accounts (often too few posts for one token); null = "
+        "'crowd'. Results are cached 4h; refresh: true forces a new pull. IMPORTANT: a fresh "
+        "pull calls the paid X API (~$1.50 single topic, ~$1.10 digest). Call it when the user asks for "
         "a sentiment read or as part of an advisory desk_view; never speculatively."
     ),
     input_schema={
