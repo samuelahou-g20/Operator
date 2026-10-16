@@ -29,7 +29,7 @@ import json
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from src.common.config import load_config
@@ -59,6 +59,10 @@ class Strategy:
     resetting: bool | None
     reported: datetime | None    # the status HEARTBEAT (~30s), NOT when this state was entered:
     last_error: str              # the box restamps it continuously, so it dates the read, not the stop
+    validity_reason: str = ""    # why a STOP (ERROR) came out of the market ("Delays: ...")
+    # Each rule's size multiplier (``<rule>_notional_multiplier_<bid|ask>``): a 0 is the rule that
+    # took the strategy out of the market. Deliberately-off strategies have none at 0.
+    adjust: dict = field(default_factory=dict, hash=False, compare=False)
 
     @property
     def token(self) -> str:
@@ -126,6 +130,8 @@ def _strategies_from_status(payload: dict, program: str, box: str) -> list[Strat
             trading=debug.get("trading"), resetting=debug.get("resetting"),
             reported=_micros(entry.get("latest_status_time_micros")),
             last_error=str(entry.get("last_error_status") or ""),
+            validity_reason=str(details.get("decision_state_validity_reason") or ""),
+            adjust=dict(debug.get("order_adjustment") or {}),
         ))
     return out
 

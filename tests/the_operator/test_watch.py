@@ -1,7 +1,6 @@
-"""The MM watch: transitions only, baseline on the first round, and never a false recovery.
-
-Both watches post through ``Hourly``: at most one message per desk per clock hour. Tests move the
-hour with ``_Clock.next_hour`` right before the round that should speak."""
+"""The MM watch posts a snapshot of what is not quoting, and why, every :00 and :30; the volume
+watch posts sustained breaches once an hour. Tests move time with ``_Clock`` right before the round
+that should speak."""
 
 from __future__ import annotations
 
@@ -12,15 +11,31 @@ import pytest
 from src.the_operator import rapid, watch
 
 
-def _entry(name, status, trading):
+def _adjust(**zero):
+    """An order_adjustment block with every rule at 1, except ``rule=sides`` set to 0."""
+    adj = {f"{r}_notional_multiplier_{s}": 1.0 for r, _ in watch._RULES for s in ("bid", "ask")}
+    adj.update(notional_multiplier_bid=1.0, notional_multiplier_ask=1.0)
+    for rule, sides in zero.items():
+        for side in sides.split(","):
+            adj[f"{rule}_notional_multiplier_{side}"] = 0.0
+    return adj
+
+
+def _entry(name, status, trading, reason="", **zero):
     return {"strategy_name": name, "latest_status": status, "latest_status_time_micros": 0,
             "last_error_status": "",
-            "latest_status_details": json.dumps({"debug_info": {"trading": trading}})}
+            "latest_status_details": json.dumps({
+                "decision_state_validity_reason": reason,
+                "debug_info": {"trading": trading, "order_adjustment": _adjust(**zero)}})}
 
 
 OK = "LM2Strategy:REPOL:POL-EUR:BITVAVO"
 STOP = "LM2Strategy:REPARTI:PARTI-USDT:BINANCE"
+STOP2 = "LM2Strategy:REPARTI:PARTI-EUR:BITVAVO"
 ERR = "LM2Strategy:RENEAR:NEAR-USD:BITSTAMP"
+BAL = "LM2Strategy:RENYM:NYM-USD:KRAKEN"
+OFF = "LM2Strategy:RELAPTOP:LAPTOP-EUR:KRAKEN"
+BAND = {"price_boundaries": "bid,ask"}
 
 
 @pytest.fixture
@@ -44,114 +59,134 @@ class _Clock:
     def next_hour(self) -> None:
         self.t += 3600
 
+    def next_half_hour(self) -> None:
+        self.t += 1800
+
 
 def _watcher(posted, say=None):
     say = say or (lambda chat, text: posted.append((chat, text)))
-    return watch.Watcher({"mm3": ["-1", "-2"]}, say, watch.Hourly(say, _Clock()))
+    return watch.Watcher({"mm3": ["-1", "-2"]}, say,
+                         watch.Hourly(say, _Clock(), period_s=watch.MM_POST_S))
 
 
-def test_first_round_is_a_silent_baseline_not_a_wall_of_strategies(box, monkeypatch):
-    """A restart says nothing in the chat, even with strategies already down."""
-    _serve(monkeypatch, [_entry(OK, "TRADING", True), _entry(STOP, "STOP (DISABLED)", False)])
+def _strategies(monkeypatch, entries):
+    _serve(monkeypatch, entries)
+    return rapid.scan("mm3", [])
+
+
+def test_the_box_reports_why_a_strategy_stopped(box, monkeypatch):
+    (s,) = _strategies(monkeypatch, [_entry(ERR, "STOP (ERROR)", False,
+                                            reason="Delays:  Orderbook data is older than 5.0 seconds")])
+    assert s.validity_reason.startswith("Delays:")
+    assert s.adjust["price_boundaries_notional_multiplier_bid"] == 1.0
+
+
+@pytest.mark.parametrize("entry,want", [
+    (_entry(OK, "TRADING", True), None),
+    (_entry(STOP, "STOP (DISABLED)", False, **BAND), "band"),
+    (_entry(STOP, "STOP (DISABLED)", False, low_balance_policy="bid,ask", **BAND), "band"),
+    (_entry(BAL, "STOP (DISABLED)", False, low_balance_policy="ask"), "balance"),
+    (_entry(ERR, "STOP (ERROR)", False, reason="Delays: stale"), "error"),
+    (_entry(ERR, "STOP (ERROR)", False, reason="Ref Price Out of Boundaries: Price 3.0"), "band"),
+    (_entry(OK, "STOP (DISABLED)", False, descale_trigger="bid,ask"), "descale"),
+    (_entry(OFF, "STOP (DISABLED)", False), "off"),
+    (_entry(OK, None, None), "unknown"),
+])
+def test_cause_reads_the_rule_that_zeroed_the_size(box, monkeypatch, entry, want):
+    (s,) = _strategies(monkeypatch, [entry])
+    assert watch.cause(s) == want
+
+
+def test_trading_with_both_sizes_at_zero_is_not_quoting(box, monkeypatch):
+    """The docs' CASE 2: status TRADING, but no orders because the size multiplier is 0."""
+    e = _entry(OK, "TRADING", True)
+    details = json.loads(e["latest_status_details"])
+    details["debug_info"]["order_adjustment"].update(notional_multiplier_bid=0.0,
+                                                     notional_multiplier_ask=0.0)
+    e["latest_status_details"] = json.dumps(details)
+    (s,) = _strategies(monkeypatch, [e])
+    assert watch.cause(s) == "zero"
+
+
+def test_the_snapshot_groups_by_cause_with_the_fix(box, monkeypatch):
+    found = _strategies(monkeypatch, [
+        _entry(OK, "TRADING", True),
+        _entry(STOP, "STOP (DISABLED)", False, low_balance_policy="bid,ask", **BAND),
+        _entry(STOP2, "STOP (DISABLED)", False, **BAND),
+        _entry(BAL, "STOP (DISABLED)", False, low_balance_policy="bid"),
+        _entry(ERR, "STOP (ERROR)", False, reason="Delays:  Orderbook data is older than 5.0 seconds"),
+        _entry(OFF, "STOP (DISABLED)", False),
+    ])
+    text = watch.render_snapshot("mm3", found, [])
+    assert text.startswith("🔔 **MM watch · mm3** — 4 not quoting · ")     # off-by-hand not counted
+    assert ("• **PARTI** — `BINANCE`, `BITVAVO` · also low balance · `/operator rebound PARTI`"
+            in text)
+    assert "• **NYM** — `KRAKEN` (bid only)" in text
+    assert "• **NEAR** — `BITSTAMP`: Delays: Orderbook data is older than 5.0 seconds" in text
+    assert "⏸ **Off by hand:** LAPTOP (1)" in text and "POL" not in text
+    assert text.index("Price outside") < text.index("Low balance") < text.index("Error")
+
+
+def test_only_hand_switched_off_strategies_post_nothing(box, monkeypatch):
+    found = _strategies(monkeypatch, [_entry(OK, "TRADING", True), _entry(OFF, "STOP (DISABLED)", False)])
+    assert watch.render_snapshot("mm3", found, []) == ""
+
+
+def test_a_box_that_did_not_answer_is_said(box, monkeypatch):
+    found = _strategies(monkeypatch, [_entry(STOP, "STOP (DISABLED)", False, **BAND)])
+    text = watch.render_snapshot("mm3", found, ["box mm3/tk2 unreachable: timed out"])
+    assert "1 box(es) did not answer" in text
+
+
+def test_many_tokens_are_truncated_and_many_venues_folded(box, monkeypatch):
+    many = [_entry(f"LM2Strategy:REX:X{i:02}-USDT:BINANCE", "STOP (DISABLED)", False, **BAND)
+            for i in range(20)]
+    venues = [_entry(f"LM2Strategy:REY:Y-USDT:V{i}", "STOP (DISABLED)", False, **BAND) for i in range(5)]
+    text = watch.render_snapshot("mm3", _strategies(monkeypatch, many + venues), [])
+    assert f"• …and {21 - watch.MAX_LINES} more tokens" in text
+    found = _strategies(monkeypatch, venues)
+    assert "• **Y** — `V0`, `V1`, `V2` +2 more" in watch.render_snapshot("mm3", found, [])
+
+
+def test_the_snapshot_goes_out_every_half_hour_while_something_is_down(box, monkeypatch):
+    """No hold, no "quoting again": each :00 and :30 restates what is down, to both chats."""
+    _serve(monkeypatch, [_entry(OK, "TRADING", True), _entry(STOP, "STOP (DISABLED)", False, **BAND)])
     posted = []
     w = _watcher(posted)
-    w.round_once()
-    w.hourly.clock.next_hour()
+    w.round_once()                                # a start spends its slot: nothing yet
     w.round_once()
     assert posted == []
-
-
-def test_a_silent_baseline_when_everything_is_quoting(box, monkeypatch):
-    _serve(monkeypatch, [_entry(OK, "TRADING", True)])
-    posted = []
-    _watcher(posted).round_once()
-    assert posted == []
-
-
-def test_a_sustained_stop_is_announced_once_then_cleared_once(box, monkeypatch):
-    _serve(monkeypatch, [_entry(OK, "TRADING", True), _entry(STOP, "TRADING", True)])
-    posted = []
-    w = _watcher(posted)
-    w.round_once()                                # baseline, all fine
-    w.round_once()                                # nothing changed
-    assert posted == []
-
-    _serve(monkeypatch, [_entry(OK, "TRADING", True), _entry(STOP, "STOP (DISABLED)", False)])
-    for _ in range(watch.STOPPED_ROUNDS - 1):     # not yet held long enough
-        w.round_once()
-        assert posted == []
-    w.hourly.clock.next_hour()
+    w.gate.clock.next_half_hour()
     w.round_once()
-    text = posted[0][1]
-    assert "Stopped quoting (1)" in text and "PARTI-USDT" in text
-    assert "price left its band" in text and "/operator rebound PARTI" in text
-    assert len(posted) == 2                       # posted to both chats
+    assert [c for c, _ in posted] == ["-1", "-2"] and "PARTI" in posted[0][1]
+    posted.clear()
+    w.round_once()                                # same slot: no repeat
+    assert posted == []
+    w.gate.clock.next_half_hour()
+    w.round_once()                                # still down: said again, as asked
+    assert len(posted) == 2
 
     posted.clear()
-    w.hourly.clock.next_hour()
-    w.round_once()                                # still stopped: do not nag
-    assert posted == []
-
     _serve(monkeypatch, [_entry(OK, "TRADING", True), _entry(STOP, "TRADING", True)])
-    for _ in range(watch.STOPPED_ROUNDS - 1):
-        w.round_once()
-        assert posted == []
-    w.hourly.clock.next_hour()                    # the recovery lands in the next hourly message
-    w.round_once()
-    assert "Quoting again (1)" in posted[0][1]
-
-
-def test_a_price_flapping_across_its_band_edge_is_never_announced(box, monkeypatch):
-    """The whole reason this exists: a mid sitting on the edge crosses many times an hour."""
-    posted = []
-    w = _watcher(posted)
-    _serve(monkeypatch, [_entry(STOP, "TRADING", True)])
-    w.round_once()                                # baseline
-    for _ in range(20):
-        w.hourly.clock.next_hour()
-        _serve(monkeypatch, [_entry(STOP, "STOP (DISABLED)", False)])
-        w.round_once()
-        _serve(monkeypatch, [_entry(STOP, "TRADING", True)])
-        w.round_once()
+    w.gate.clock.next_half_hour()
+    w.round_once()                                # all quoting: silence, no recovery message
     assert posted == []
 
 
-def test_a_recovery_is_silent_when_the_stop_was_never_announced(box, monkeypatch):
+def test_a_snapshot_is_the_latest_scan_not_a_stale_one(box, monkeypatch):
+    """A desk whose boxes stopped answering must not repost the last list it had."""
+    _serve(monkeypatch, [_entry(STOP, "STOP (DISABLED)", False, **BAND)])
     posted = []
     w = _watcher(posted)
-    _serve(monkeypatch, [_entry(STOP, "TRADING", True)])
     w.round_once()
-    _serve(monkeypatch, [_entry(STOP, "STOP (DISABLED)", False)])
-    w.round_once()                                # one round bad: below the threshold
-    _serve(monkeypatch, [_entry(STOP, "TRADING", True)])
-    for _ in range(watch.STOPPED_ROUNDS + 1):
-        w.hourly.clock.next_hour()
-        w.round_once()
+    w.gate.clock.next_half_hour()
+    w.round_once()
+    assert len(posted) == 2
+    posted.clear()
+    _serve(monkeypatch, [])                       # every box silent from here on
+    w.gate.clock.next_half_hour()
+    w.round_once()
     assert posted == []
-
-
-def test_an_error_is_announced_separately_from_a_deliberate_stop(box, monkeypatch):
-    _serve(monkeypatch, [_entry(ERR, "TRADING", True), _entry(STOP, "TRADING", True)])
-    posted = []
-    w = _watcher(posted)
-    w.round_once()
-    _serve(monkeypatch, [_entry(ERR, "STOP (ERROR)", False),
-                         _entry(STOP, "STOP (DISABLED)", False)])
-    for _ in range(watch.STOPPED_ROUNDS):
-        w.round_once()
-    w.hourly.clock.next_hour()
-    w.round_once()
-    text = posted[0][1]
-    assert "Stopped in error (1)" in text and "NEAR-USD" in text
-    assert "Stopped quoting (1)" in text and "PARTI-USDT" in text
-
-
-def test_a_box_that_stops_answering_neither_alarms_nor_clears(box, monkeypatch):
-    """A strategy missing this round means its box did not reply — that is not news either way."""
-    tracks = {OK: watch.Track("ok", streak=9), STOP: watch.Track("stopped", streak=9,
-                                                                announced=True)}
-    assert watch.settle(tracks, {OK: "ok"}) == ([], [])
-    assert tracks[STOP].streak == 9 and tracks[STOP].announced   # untouched by the gap
 
 
 def test_a_failing_scan_does_not_kill_the_round(box, monkeypatch):
@@ -171,29 +206,19 @@ def test_an_unpostable_chat_does_not_stop_the_other(box, monkeypatch):
             raise TimeoutError("telegram down")
         posted.append((chat, text))
     w = _watcher(posted, say)
-    _serve(monkeypatch, [_entry(STOP, "TRADING", True)])
+    _serve(monkeypatch, [_entry(STOP, "STOP (DISABLED)", False, **BAND)])
     w.round_once()
-    _serve(monkeypatch, [_entry(STOP, "STOP (DISABLED)", False)])
-    for _ in range(watch.STOPPED_ROUNDS):
-        w.round_once()
-    w.hourly.clock.next_hour()
+    w.gate.clock.next_half_hour()
     w.round_once()
     assert [c for c, _ in posted] == ["-2"]
 
 
-def test_long_outages_are_truncated(box, monkeypatch):
-    many = [_entry(f"LM2Strategy:REX:X{i}-USDT:BINANCE", "TRADING", True) for i in range(40)]
-    _serve(monkeypatch, many)
-    posted = []
-    w = _watcher(posted)
-    w.round_once()
-    _serve(monkeypatch, [_entry(e["strategy_name"], "STOP (DISABLED)", False) for e in many])
-    for _ in range(watch.STOPPED_ROUNDS):
-        w.round_once()
-    w.hourly.clock.next_hour()
-    w.round_once()
-    assert f"…and {40 - watch.MAX_LINES} more" in posted[0][1]
-
+def test_a_box_that_stops_answering_neither_alarms_nor_clears():
+    """For the volume watch: a coin missing from a reading is not news either way."""
+    tracks = {"ELA": watch.Track("ok", streak=9), "DNX": watch.Track("low", streak=9,
+                                                                    announced=True)}
+    assert watch.settle(tracks, {"ELA": "ok"}) == ([], [])
+    assert tracks["DNX"].streak == 9 and tracks["DNX"].announced   # untouched by the gap
 
 # --------------------------------------------------------------------------------------
 # The volume watch: the desk's 5%-50% rule, held for two rounds, minus today's exceptions
@@ -310,58 +335,7 @@ def test_an_in_band_coin_is_in_neither_group_and_brings_no_command():
     assert "DNX" in text and "ELA" not in text and "/operator nope" not in text
 
 
-def test_what_is_already_broken_at_startup_is_never_replayed(box, monkeypatch):
-    """A restart must not paste the whole standing outage into the chat a few rounds later."""
-    _serve(monkeypatch, [_entry(STOP, "STOP (DISABLED)", False), _entry(OK, "TRADING", True)])
-    posted = []
-    w = _watcher(posted)
-    w.round_once()                                  # baseline: silent
-    for _ in range(watch.STOPPED_ROUNDS + 2):
-        w.hourly.clock.next_hour()
-        w.round_once()
-    assert posted == []
 
-    _serve(monkeypatch, [_entry(STOP, "TRADING", True), _entry(OK, "TRADING", True)])
-    for _ in range(watch.STOPPED_ROUNDS):
-        w.round_once()
-    w.hourly.clock.next_hour()
-    w.round_once()
-    assert "Quoting again (1)" in posted[0][1]      # but its recovery still lands
-
-
-def test_news_is_held_until_the_next_hour_and_a_start_waits_too(box, monkeypatch):
-    """Scan often so an outage is found in minutes; tell the chat once an hour, at :00. The hour
-    the watch starts in is spent, so news found right after a restart waits for :00 as well."""
-    _serve(monkeypatch, [_entry(OK, "TRADING", True), _entry(STOP, "TRADING", True)])
-    posted = []
-    w = _watcher(posted)
-    w.round_once()                                  # baseline
-    _serve(monkeypatch, [_entry(OK, "TRADING", True), _entry(STOP, "STOP (DISABLED)", False)])
-    for _ in range(watch.STOPPED_ROUNDS + 3):
-        w.round_once()
-    assert posted == []                             # held, not dropped
-    assert w.held["mm3"][0] == [STOP]
-
-    w.hourly.clock.next_hour()                      # :00
-    w.round_once()
-    assert "PARTI-USDT" in posted[0][1] and "mm3" not in w.held
-
-
-def test_news_found_after_the_hour_was_spent_waits_for_the_next_one(box, monkeypatch):
-    """An empty :00 still spends the hour: a stop found at :20 goes out at the next :00."""
-    _serve(monkeypatch, [_entry(STOP, "TRADING", True)])
-    posted = []
-    w = _watcher(posted)
-    w.round_once()
-    w.hourly.clock.next_hour()
-    w.round_once()                                  # :00, nothing to say
-    _serve(monkeypatch, [_entry(STOP, "STOP (DISABLED)", False)])
-    for _ in range(watch.STOPPED_ROUNDS):
-        w.round_once()
-    assert posted == []
-    w.hourly.clock.next_hour()
-    w.round_once()
-    assert "PARTI-USDT" in posted[0][1]
 
 
 def test_a_held_volume_breach_is_delivered_on_the_next_hour(sheet):
@@ -377,26 +351,3 @@ def test_a_held_volume_breach_is_delivered_on_the_next_hour(sheet):
     w.round_once()
     assert "**ELA** 91%" in posted[0]
 
-
-def test_both_watches_share_one_message_per_hour(box, monkeypatch, sheet):
-    """The desk hears once an hour in total, not once per watch."""
-    posted = []
-    say = lambda chat, text: posted.append((chat, text))   # noqa: E731
-    hourly = watch.Hourly(say, _Clock())
-    mm = watch.Watcher({"mm3": ["-1"]}, say, hourly)
-    vw = watch.VolumeWatcher({"mm3": ["-1"]}, say, shares_fn=lambda d, t, w: [_Venue()],
-                             brief_fn=lambda v: ("cause", "/operator widen ELA"), hourly=hourly)
-    _serve(monkeypatch, [_entry(STOP, "TRADING", True)])
-    sheet.update({"ELA": 0.16})
-    mm.round_once()
-    vw.round_once()
-    _serve(monkeypatch, [_entry(STOP, "STOP (DISABLED)", False)])
-    sheet["ELA"] = 0.91
-    for _ in range(watch.STOPPED_ROUNDS):
-        mm.round_once()
-        vw.round_once()
-    hourly.clock.next_hour()
-    vw.round_once()                                 # whichever watch reaches :00 first posts both
-    mm.round_once()
-    assert len(posted) == 1
-    assert "MM watch" in posted[0][1] and "Volume watch" in posted[0][1]

@@ -91,19 +91,21 @@ refuses. `OPERATOR_ADMINS` is a third, smaller list — halt/resume only.
 
 ## What it says unprompted
 
-`watch.py` runs two background rounds per served desk, plus the MM3 move alert. The two
-**announce sustained changes, not states**, and they share one gate (`Hourly`): **one message per desk per clock hour**, sent on the
-first round after :00 and carrying both watches' news. What fires inside the hour is held and
-folded into that message rather than dropped. A restart says nothing in the chat (the baseline is a
-log line) and waits for the next :00; every post is logged as `watch post <desk>`. Scanning stays
-frequent so a real outage is still found within minutes — detection cadence and notification
-cadence are deliberately different.
+`watch.py` runs two background rounds per served desk, plus the MM3 move alert. Scanning stays
+frequent so a real outage is found within minutes; posting is on a fixed slot, and a restart waits
+for the next slot. Every post is logged as `watch post <desk>`.
 
-- **Quoting watch** (5 min): a strategy must hold a bad state for `STOPPED_ROUNDS` (3) scans
-  before it is mentioned, and hold `ok` for as many before the all-clear. A price resting on its
-  band edge crosses many times an hour; alerting on each crossing produced hundreds of messages a
-  day, which is what the hysteresis exists to stop. A strategy missing from a scan (its box did
-  not answer) keeps its streak untouched — a box outage neither raises an alarm nor clears one.
+- **Quoting watch** (scans every 5 min, **posts every :00 and :30**): a snapshot of every strategy
+  not quoting right now, grouped by why, one line per token with its venues and the fix. It does
+  not announce stops or recoveries: the desk asked for the state, not a stream of changes. The why
+  comes from the box's `/rest/status/full`: a `STOP (ERROR)` carries its
+  `decision_state_validity_reason` (usually "Delays: …", which fixes itself, then tech), and every
+  other stop is the rule whose size multiplier is 0 in `order_adjustment` (price band → `rebound`,
+  low balance → fund the account, descale, price-range rule, target balance). See
+  `docs/references/rapid_engine/713818117_…common_issues_for_traders.md`. A strategy disabled with
+  no rule at 0 was switched off by hand: it gets one summary line and, on its own, no post. A box
+  that did not answer is said in one line; a desk with no answer at all posts nothing rather than
+  an old list.
 - **Volume watch** (15 min): market share against the desk's 5%-50% rule, triaged from the
   aggregator sheet and diagnosed per venue only for the coins actually in breach. A coin the desk
   deliberately keeps low is dismissed in chat (`volume_snooze`) and skipped for the rest of the
@@ -116,9 +118,9 @@ cadence are deliberately different.
   a start seeds 20 days and only bars closing afterwards are scored. Covers the 25 calibrated
   tokens in `moves.VENUES`; every post is logged as `move post`.
 
-**Whatever is already broken at the first scan after a restart is marked as known and never
-replayed** (`watch.baseline`); only its recovery is reported. Without that, every restart pasted
-the standing outage into the chat.
+The volume watch **announces sustained changes, not states**, once per clock hour (`Hourly`): a
+coin must stay outside the band for two scans, and whatever is already outside it at the first scan
+after a restart is marked as known and never replayed (`watch.baseline`).
 
 ## What survives a restart
 

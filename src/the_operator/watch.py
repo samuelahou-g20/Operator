@@ -1,31 +1,24 @@
-"""Background watch over the quoting books: posts when market making stops, or share drifts.
+"""Background watch over the quoting books: posts what is not quoting, and when share drifts.
 
 Two rounds on their own cadences. The quoting watch asks "is the book live"; the volume watch asks
-"are we trading the right amount of it" against the desk's 5%-50% rule of thumb. Both speak only
-when something holds, and the volume one stays quiet on any coin a trader has dismissed today.
+"are we trading the right amount of it" against the desk's 5%-50% rule of thumb.
 
 Everything else in the Operator is pull — someone has to suspect a problem before they can ask
 about it. A strategy that leaves its price band or dies with an error is silent: the volume simply
 stops, and the desk finds out when somebody looks. This is the one thing that speaks first.
 
-It posts SUSTAINED transitions, not every crossing. A price sitting near its band edge crosses back
-and forth many times an hour — announcing each one buried the desk in hundreds of messages a day
-and taught everyone to ignore the channel. So a strategy must hold a state for ``STOPPED_ROUNDS``
-consecutive scans before it is announced, and hold ``ok`` for as many before the
-recovery is; a flap that reverses inside that window is never mentioned. Recovery is only reported
-for a strategy whose stop was reported, so the two always come in pairs.
+The quoting watch posts a SNAPSHOT, not transitions: every :00 and :30, the strategies not quoting
+right now, grouped by why and with the fix. "Stopped" / "quoting again" messages read as a stream
+the desk had to replay in their heads; a snapshot is the state itself (the owner's call). The why
+comes from the box: a STOP (ERROR) carries its validity reason, and every other stop shows as a
+rule whose size multiplier is 0 (price band, low balance, descale, ...). A strategy disabled with no
+rule at 0 was switched off by hand; it gets one summary line, and alone never triggers a post.
 
-A strategy missing from a scan (its box did not answer) keeps its streak untouched — a box outage
-must neither raise an alarm nor clear one.
-
-Both watches speak through one ``Hourly`` gate: a desk's news goes out as ONE message, on the first
-round after each :00, and a start waits for the next :00 like any other news. Two watches on rolling
-hours, plus a fresh throttle and a "now on" line on every restart, read as a stream.
-
-The first scan of a desk only establishes a baseline (a log line, not a post): dozens of
-strategies are deliberately disabled at any time, and listing them on every restart is noise. State
-is in memory, so a restart re-baselines — deliberate, same as ``flow_alert_bot``: the alternative is a
-persisted file that goes stale while the process is down.
+The volume watch still announces SUSTAINED transitions (``settle``) and speaks through an
+``Hourly`` gate once per clock hour; the quoting watch has its own half-hourly gate. A start waits
+for the next slot like any other news. The volume watch's first scan only establishes a baseline
+(a log line, not a post), so a restart does not replay what was already outside the band; it stays
+quiet on any coin a trader has dismissed today.
 
 MUST NOT: change anything on a box (it only reads), decide policy, or post into a chat that is not
 the one pinned to the scanned desk.
@@ -36,6 +29,7 @@ from __future__ import annotations
 import threading
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 from src.common.logging import get_logger
 from src.the_operator import moves, rapid, volume
@@ -43,33 +37,108 @@ from src.the_operator import moves, rapid, volume
 _log = get_logger("operator")
 
 INTERVAL_S = 5 * 60
+MM_POST_S = 30 * 60             # the quoting snapshot goes out every :00 and :30
 VOLUME_INTERVAL_S = 15 * 60     # the desk's own cadence for looking at share
 VOLUME_ROUNDS = 2               # ~30 min outside the band before it is worth a message
 MAX_LINES = 12          # a desk-wide event (a venue outage) must not paste 60 lines into the chat
-STOPPED_ROUNDS = 3      # ~15 min in a state, either way, before it is worth a message
+MAX_VENUES = 3          # venues named per token line; the rest are "+N more"
+
+# Section order, heading and the per-token fix. A rule's multiplier at 0 is the cause; the band
+# comes first because a strategy stopped by its band AND low on balance is fixed by the rebound.
+CAUSES = {
+    "band": "⚠️ **Price outside its band**",
+    "balance": "💰 **Low balance**",
+    "error": "❌ **Error**",
+    "descale": "📉 **Descaled**",
+    "range": "📏 **Price-range rule at 0**",
+    "target": "🎯 **Target-balance rule at 0**",
+    "zero": "⭕ **Trading, but order size 0**",
+    "unknown": "❓ **No status from the box**",
+}
+_RULES = (("price_boundaries", "band"), ("low_balance_policy", "balance"),
+          ("descale_trigger", "descale"), ("price_range_rule", "range"),
+          ("target_balance_config", "target"))
 
 
-def _state(s: rapid.Strategy) -> str:
-    """The only distinction worth waking a trader for: dead, deliberately off, or quoting."""
+def _zero_sides(s: rapid.Strategy, rule: str) -> set[str]:
+    return {side for side in ("bid", "ask") if s.adjust.get(f"{rule}_notional_multiplier_{side}") == 0}
+
+
+def cause(s: rapid.Strategy) -> str | None:
+    """Why ``s`` is not quoting: a ``CAUSES`` key, "off" (switched off by hand), or None (quoting)."""
+    zeros = [c for rule, c in _RULES if _zero_sides(s, rule)]
     if s.errored:
-        return "error"
-    return "stopped" if not s.healthy else "ok"
+        return "band" if "band" in zeros or "Out of Boundaries" in s.validity_reason else "error"
+    if s.healthy:
+        both_zero = (s.adjust.get("notional_multiplier_bid") == 0
+                     and s.adjust.get("notional_multiplier_ask") == 0)
+        return "zero" if both_zero else None
+    if zeros:
+        return zeros[0]
+    return "unknown" if s.status in ("?", "None") else "off"
 
 
-def scan_desk(program: str) -> tuple[dict[str, str], dict[str, rapid.Strategy], list[str]]:
-    """``({calculator: state}, {calculator: strategy}, warnings)`` for one program."""
-    warnings: list[str] = []
-    found = rapid.scan(program, warnings)
-    return {s.name: _state(s) for s in found}, {s.name: s for s in found}, warnings
+def _sides(strategies: list[rapid.Strategy], rule: str) -> str:
+    sides = set().union(*(_zero_sides(s, rule) for s in strategies))
+    return "both sides" if sides == {"bid", "ask"} else f"{''.join(sides)} only" if sides else ""
+
+
+def _venues(strategies: list[rapid.Strategy]) -> str:
+    names = sorted({s.exchange for s in strategies})
+    more = f" +{len(names) - MAX_VENUES} more" if len(names) > MAX_VENUES else ""
+    return ", ".join(f"`{n}`" for n in names[:MAX_VENUES]) + more
+
+
+def _line(key: str, token: str, group: list[rapid.Strategy]) -> str:
+    line = f"• **{token}** — {_venues(group)}"
+    if key == "band":
+        if _sides(group, "low_balance_policy"):
+            line += " · also low balance"
+        return line + f" · `/operator rebound {token}`"
+    if key == "balance":
+        return line + f" ({_sides(group, 'low_balance_policy')})"
+    if key == "error":
+        why = " ".join(next((s.validity_reason for s in group if s.validity_reason), "").split())
+        return line + (f": {why[:70]}" if why else "")
+    return line
+
+
+def render_snapshot(program: str, strategies: list[rapid.Strategy], warnings: list[str],
+                    now: datetime | None = None) -> str:
+    """The half-hourly message ("" when only hand-switched-off strategies are down)."""
+    by: dict[str, dict[str, list[rapid.Strategy]]] = {}
+    for s in strategies:
+        if (key := cause(s)) is not None:
+            by.setdefault(key, {}).setdefault(s.token, []).append(s)
+    down = sum(len(g) for k, toks in by.items() if k != "off" for g in toks.values())
+    if not down:
+        return ""
+    stamp = f"{(now or datetime.now(timezone.utc)):%H:%M} UTC"
+    out = [f"🔔 **MM watch · {program}** — {down} not quoting · {stamp}"]
+    for key, heading in CAUSES.items():
+        tokens = by.get(key)
+        if not tokens:
+            continue
+        out += ["", heading]
+        names = sorted(tokens)
+        out += [_line(key, t, tokens[t]) for t in names[:MAX_LINES]]
+        if len(names) > MAX_LINES:
+            out.append(f"• …and {len(names) - MAX_LINES} more tokens")
+    if off := by.get("off"):
+        out += ["", "⏸ **Off by hand:** " + ", ".join(f"{t} ({len(g)})" for t, g in sorted(off.items()))]
+    dead = [w for w in warnings if "unreachable" in w]
+    if dead:
+        out += ["", f"⚠️ {len(dead)} box(es) did not answer, so this list may be short."]
+    return "\n".join(out)
 
 
 @dataclass
 class Track:
-    """How long one strategy has held its current state, and whether we have reported it."""
+    """How long one coin has held its current state, and whether we have reported it."""
 
     state: str
     streak: int = 1
-    announced: bool = False          # we told the chat this one stopped
+    announced: bool = False          # we told the chat about this one
 
     def observe(self, state: str) -> None:
         self.streak = self.streak + 1 if state == self.state else 1
@@ -77,11 +146,11 @@ class Track:
 
 
 def settle(tracks: dict[str, Track], after: dict[str, str],
-           rounds: int = STOPPED_ROUNDS) -> tuple[list[str], list[str]]:
+           rounds: int = VOLUME_ROUNDS) -> tuple[list[str], list[str]]:
     """Fold this round's states into ``tracks``; return ``(to_announce, to_clear)``.
 
-    Only a state held long enough is reported, and a recovery only for a stop we reported. A
-    calculator absent from ``after`` is left alone: its box did not answer, which is not news."""
+    Only a state held long enough is reported, and a recovery only for a breach we reported. A key
+    absent from ``after`` is left alone: no reading is not news."""
     to_announce, to_clear = [], []
     for calc, state in after.items():
         track = tracks.get(calc)
@@ -99,67 +168,35 @@ def settle(tracks: dict[str, Track], after: dict[str, str],
 
 
 def baseline(tracks: dict[str, Track]) -> None:
-    """Treat what is already broken on the first scan as known, so a restart does not replay it.
-
-    Without this a pre-existing breach still reaches the announce threshold a few rounds in, and
-    the first thing a restart does is paste every stopped strategy into the chat. They stay
-    marked, so a later recovery is still reported."""
+    """Treat what is already outside the band on the first scan as known, so a restart does not
+    replay it. They stay marked, so a later recovery is still tracked."""
     for track in tracks.values():
         track.announced = track.state != "ok"
 
 
-def render(program: str, went_bad: list[str], recovered: list[str],
-           strategies: dict[str, rapid.Strategy]) -> str:
-    """The chat message for one round's transitions ("" when there is nothing to say)."""
-    if not went_bad and not recovered:
-        return ""
-    out = [f"🔔 **MM watch · {program}**"]
-    if went_bad:
-        errs = [c for c in went_bad if strategies[c].errored]
-        stops = [c for c in went_bad if not strategies[c].errored]
-        if errs:
-            out += ["", f"❌ **Stopped in error ({len(errs)})**"]
-            out += [f"• `{strategies[c].exchange}` {strategies[c].ccypair}" for c in errs[:MAX_LINES]]
-            if len(errs) > MAX_LINES:
-                out.append(f"• …and {len(errs) - MAX_LINES} more")
-        if stops:
-            out += ["", f"⚠️ **Stopped quoting ({len(stops)})** — usually the price left its band"]
-            out += [f"• `{strategies[c].exchange}` {strategies[c].ccypair}" for c in stops[:MAX_LINES]]
-            if len(stops) > MAX_LINES:
-                out.append(f"• …and {len(stops) - MAX_LINES} more")
-            tokens = sorted({strategies[c].token for c in stops})[:4]
-            out.append(f"Rebound with `/operator rebound {tokens[0]}`" if len(tokens) == 1
-                       else "Rebound with `/operator rebound <token>` (" + ", ".join(tokens) + ")")
-    if recovered:
-        out += ["", f"✅ **Quoting again ({len(recovered)})**"]
-        out += [f"• `{strategies[c].exchange}` {strategies[c].ccypair}"
-                for c in recovered[:MAX_LINES]]
-        if len(recovered) > MAX_LINES:
-            out.append(f"• …and {len(recovered) - MAX_LINES} more")
-    return "\n".join(out)
-
-
 class Hourly:
-    """One message per desk per clock hour, holding both watches' news; nothing is dropped.
+    """One message per desk per slot (``period_s``, a clock hour by default) holding its sources'
+    news; nothing is dropped.
 
     Scanning stays frequent so a real outage is detected within minutes, but the chat hears about
-    it once an hour, at :00 — detection cadence and notification cadence are different problems.
-    The hour a desk is first seen in is spent, so a restart waits for the next :00. ``clock`` is
-    injectable so tests can move the hour."""
+    it once per slot — detection cadence and notification cadence are different problems. The slot
+    a desk is first seen in is spent, so a restart waits for the next one. ``clock`` is injectable
+    so tests can move time."""
 
-    def __init__(self, say, clock=time.time) -> None:
+    def __init__(self, say, clock=time.time, period_s: float = 3600) -> None:
         self.say = say
         self.clock = clock
+        self.period_s = period_s
         self.sources: list = []              # watchers with take(desk) -> str
-        self.slot: dict[str, int] = {}       # desk -> the clock hour last spent
-        self.lock = threading.Lock()         # both watch threads hold and flush through here
+        self.slot: dict[str, int] = {}       # desk -> the slot last spent
+        self.lock = threading.Lock()         # watch threads hold and flush through here
 
     def flush(self, desk: str, chat_ids: list[str]) -> None:
         with self.lock:
-            hour = int(self.clock() // 3600)
-            if self.slot.setdefault(desk, hour) >= hour:
+            slot = int(self.clock() // self.period_s)
+            if self.slot.setdefault(desk, slot) >= slot:
                 return
-            self.slot[desk] = hour           # spent even when empty: news at :20 waits for :00
+            self.slot[desk] = slot           # spent even when empty: news at :20 waits for the next
             text = "\n\n".join(t for t in (s.take(desk) for s in self.sources) if t)
             if not text:
                 return
@@ -172,52 +209,40 @@ class Hourly:
 
 
 class Watcher:
-    """One round per desk per interval; news is held for ``Hourly``. ``say(chat_id, text)`` is the
-    gateway's own sender."""
+    """Scans each desk every round and posts the latest snapshot through a half-hourly gate.
+    ``say(chat_id, text)`` is the gateway's own sender."""
 
-    def __init__(self, desk_chats: dict[str, list[str]], say, hourly: Hourly | None = None) -> None:
+    def __init__(self, desk_chats: dict[str, list[str]], say, gate: Hourly | None = None) -> None:
         # {program: [chat ids]} — a desk can be pinned to more than one chat, and each scan is
         # done once and posted to all of them.
         self.desk_chats = desk_chats
-        self.hourly = hourly or Hourly(say)
-        self.hourly.sources.append(self)
-        self.tracks: dict[str, dict[str, Track]] = {}  # program -> {calculator: Track}
-        self.held: dict[str, tuple[list[str], list[str]]] = {}   # program -> (bad, recovered)
-        self.latest: dict[str, dict[str, rapid.Strategy]] = {}   # program -> last scan
+        self.gate = gate or Hourly(say, period_s=MM_POST_S)
+        self.gate.sources.append(self)
+        self.latest: dict[str, tuple[list[rapid.Strategy], list[str]]] = {}   # program -> scan
 
     def round_once(self) -> None:
         for program, chat_ids in self.desk_chats.items():
             self._scan(program)
-            self.hourly.flush(program, chat_ids)
+            self.gate.flush(program, chat_ids)
 
     def _scan(self, program: str) -> None:
+        warnings: list[str] = []
         try:
-            after, strategies, warnings = scan_desk(program)
+            found = rapid.scan(program, warnings)
         except Exception:  # noqa: BLE001 - a bad round must never kill the watch
             _log.exception("mm watch scan failed for %s", program)
             return
-        if not after:
+        if not found:
             _log.warning("mm watch: %s returned no strategies (%s)", program, warnings)
             return
-        first = program not in self.tracks
-        tracks = self.tracks.setdefault(program, {})
-        went_bad, recovered = settle(tracks, after)
-        if first:
-            baseline(tracks)
-            _log.info("mm watch baseline %s: %d strategies, %d not quoting", program,
-                      len(after), sum(1 for st in after.values() if st != "ok"))
-            return
-        with self.hourly.lock:
-            bad, rec = self.held.get(program, ([], []))
-            self.held[program] = (bad + went_bad, rec + recovered)
-            self.latest[program] = strategies
+        with self.gate.lock:
+            self.latest[program] = (found, warnings)
 
     def take(self, program: str) -> str:
-        """The held news as one block, cleared ("" when there is none). Caller holds the lock."""
-        bad, rec = self.held.pop(program, ([], []))
-        strategies = self.latest.get(program, {})
-        return render(program, [c for c in bad if c in strategies],
-                      [c for c in rec if c in strategies], strategies)
+        """The latest scan as one snapshot ("" when nothing is down). Caller holds the lock. The
+        scan is consumed, so a desk whose boxes stopped answering does not repost an old list."""
+        found, warnings = self.latest.pop(program, ([], []))
+        return render_snapshot(program, found, warnings)
 
 
 def render_volume(desk: str, flagged: list[tuple[str, float, str, str | None]]) -> str:
@@ -325,14 +350,13 @@ def desk_shares(desk: str) -> dict[str, float | None]:
 
 def start(desk_chats: dict[str, list[str]], say, interval_s: float = INTERVAL_S,
           volume_interval_s: float = VOLUME_INTERVAL_S) -> list[threading.Thread]:
-    """Both watches, each on its own thread so a slow volume round never delays the quoting one,
-    posting through one shared ``Hourly`` so a desk gets one message an hour, not one per watch.
-    MM3 also gets the move alert, which posts at once (``moves``)."""
-    hourly = Hourly(say)
+    """Both watches, each on its own thread so a slow volume round never delays the quoting one:
+    the quoting snapshot every :00 and :30, volume news once an hour. MM3 also gets the move alert,
+    which posts at once (``moves``)."""
     threads = []
-    for name, worker, every in (("operator-mm-watch", Watcher(desk_chats, say, hourly), interval_s),
+    for name, worker, every in (("operator-mm-watch", Watcher(desk_chats, say), interval_s),
                                 ("operator-volume-watch",
-                                 VolumeWatcher(desk_chats, say, hourly=hourly), volume_interval_s)):
+                                 VolumeWatcher(desk_chats, say), volume_interval_s)):
         def loop(worker=worker, every=every) -> None:
             while True:
                 worker.round_once()
