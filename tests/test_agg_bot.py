@@ -150,6 +150,17 @@ def test_read_dashboard_honours_a_per_table_header_row(monkeypatch):
     assert list(df["Coin"]) == ["FET", "ICP"]      # stops at the blank Coin, never reads past it
 
 
+def test_read_dashboard_reads_past_a_blank_spacer_row_to_all(monkeypatch):
+    """MM3's Dashboard has a blank Coin row mid-table; the ALL totals row sits below it."""
+    values = [[""], [""], ["Coin", "Price"],
+              ["FET", "0.21"], ["", ""], ["BTC", "60000"], ["ALL", ""],
+              ["", ""], ["IGNORED", "9"]]
+    _stub_sheet(monkeypatch, values)
+    df = ab.read_dashboard({"sheet": "s", "gid": 1,
+                            "columns": [("Coin", "Coin"), ("Price", "Price")]})
+    assert list(df["Coin"]) == ["FET", "BTC", "ALL"]
+
+
 def test_read_dashboard_defaults_to_row_2_when_unconfigured(monkeypatch):
     values = [[""], [""], ["Coin", "Price"], ["FET", "0.21"], ["", ""]]
     _stub_sheet(monkeypatch, values)

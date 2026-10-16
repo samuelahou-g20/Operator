@@ -148,10 +148,15 @@ def read_dashboard(cfg: dict) -> pd.DataFrame:
         raise RuntimeError(f"aggregator columns not found: {missing}")
     idx = [(disp, hdr.index(name)) for name, disp in cfg["columns"]]
     coin_i = hdr.index("Coin")
+    # MM3's table has a blank spacer row mid-table, so when an ALL row exists read through to it;
+    # sheets without one (MM4, MM2 gamma) end at the first blank Coin.
+    has_all = any(v[coin_i].strip() == "ALL" for v in vals[header_row + 1:])
     rows = []
     for r in range(header_row + 1, len(vals)):
         coin = vals[r][coin_i].strip()
-        if not coin:                       # blank Coin marks the end of the main table
+        if not coin:
+            if has_all:
+                continue
             break
         rows.append([vals[r][i] for _disp, i in idx])
         if coin == "ALL":                  # totals row = last row of the main table
